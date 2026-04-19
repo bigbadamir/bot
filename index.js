@@ -50,6 +50,10 @@ function loadDB(){
   if(!db.users) db.users = { telegram:{}, bale:{} };
   if(!db.missionsList) db.missionsList = [];
 
+  // safety
+  if(!db.users.telegram) db.users.telegram = {};
+  if(!db.users.bale) db.users.bale = {};
+
   return db;
 }
 
@@ -58,7 +62,7 @@ function saveDB(db){
 }
 
 /* =========================
-   BUTTONS (کامل و برگردانده شده)
+   BUTTONS
 ========================= */
 const BUTTONS = {
 "🚀 بازکردن برنامه":"https://click.adtrace.io/u2p3usf",
@@ -103,35 +107,41 @@ async function send(p,id,text,options={}){
 }
 
 /* =========================
-   SAFE USER (🔥 FIX اصلی کرش)
+   SAFE USER (FIX کامل)
 ========================= */
 function initUser(db,p,id){
+
+  if(!db.users[p]) db.users[p] = {};
+
   if(!db.users[p][id]){
-    db.users[p][id]={
-      points:0,
-      started:[],
-      completed:[]
+    db.users[p][id] = {
+      points: 0,
+      started: [],
+      completed: []
     };
   }
 
-  // 🔥 جلوگیری از کرش DB قدیمی
-  if(!Array.isArray(db.users[p][id].started)){
-    db.users[p][id].started = [];
-  }
+  const user = db.users[p][id];
 
-  if(!Array.isArray(db.users[p][id].completed)){
-    db.users[p][id].completed = [];
-  }
+  if(!Array.isArray(user.started)) user.started = [];
+  if(!Array.isArray(user.completed)) user.completed = [];
+  if(typeof user.points !== "number") user.points = 0;
 }
 
 /* =========================
    HANDLER
 ========================= */
 async function handle(p,id,text){
+
   let db = loadDB();
   initUser(db,p,id);
 
   let user = db.users[p][id];
+
+  // safety runtime
+  user.started ||= [];
+  user.completed ||= [];
+  user.points ||= 0;
 
   if(text==="/start"){
     saveDB(db);
@@ -140,16 +150,13 @@ async function handle(p,id,text){
     });
   }
 
-  /* PROFILE */
   if(text==="👤 پروفایل شما"){
     return send(p,id,
 `👤 پروفایل شما
 
-💰 امتیاز: ${user.points || 0}`
-    );
+💰 امتیاز: ${user.points}`);
   }
 
-  /* MISSIONS */
   if(text==="🎯 ماموریت روزانه"){
 
     let active = db.missionsList.filter(m =>
@@ -184,7 +191,6 @@ ${m.desc}
     return;
   }
 
-  /* BUTTONS */
   if(BUTTONS[text]){
     return send(p,id,"👇 ورود",{
       reply_markup:{
@@ -284,7 +290,7 @@ app.get('/claim/:p/:id/:mid',(req,res)=>{
 });
 
 /* =========================
-   ADMIN (بدون تغییر)
+   ADMIN
 ========================= */
 app.post('/admin/add-mission',(req,res)=>{
   let db=loadDB();
