@@ -40,25 +40,25 @@ const baleBot = {
 };
 
 /* =========================
-   DB
+   DB (FIXED SAFE LOAD)
 ========================= */
 const DB_FILE = './db.json';
 
 function loadDB(){
-  let db = JSON.parse(fs.readFileSync(DB_FILE));
+  let db = {};
 
-  if(!db.users) db.users = { telegram:{}, bale:{} };
-  if(!db.missionsList) db.missionsList = [];
+  if (fs.existsSync(DB_FILE)) {
+    db = JSON.parse(fs.readFileSync(DB_FILE));
+  }
 
-  // safety
-  if(!db.users.telegram) db.users.telegram = {};
-  if(!db.users.bale) db.users.bale = {};
+  db.users = db.users || { telegram: {}, bale: {} };
+  db.missionsList = db.missionsList || [];
 
   return db;
 }
 
 function saveDB(db){
-  fs.writeFileSync(DB_FILE, JSON.stringify(db,null,2));
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
 /* =========================
@@ -107,25 +107,18 @@ async function send(p,id,text,options={}){
 }
 
 /* =========================
-   SAFE USER (FIX کامل)
+   SAFE USER (FULL FIX)
 ========================= */
 function initUser(db,p,id){
 
   if(!db.users[p]) db.users[p] = {};
-
-  if(!db.users[p][id]){
-    db.users[p][id] = {
-      points: 0,
-      started: [],
-      completed: []
-    };
-  }
+  if(!db.users[p][id]) db.users[p][id] = {};
 
   const user = db.users[p][id];
 
-  if(!Array.isArray(user.started)) user.started = [];
-  if(!Array.isArray(user.completed)) user.completed = [];
-  if(typeof user.points !== "number") user.points = 0;
+  user.points = user.points || 0;
+  user.started = Array.isArray(user.started) ? user.started : [];
+  user.completed = Array.isArray(user.completed) ? user.completed : [];
 }
 
 /* =========================
@@ -138,11 +131,6 @@ async function handle(p,id,text){
 
   let user = db.users[p][id];
 
-  // safety runtime
-  user.started ||= [];
-  user.completed ||= [];
-  user.points ||= 0;
-
   if(text==="/start"){
     saveDB(db);
     return send(p,id,"🏠 منو:",{
@@ -154,14 +142,15 @@ async function handle(p,id,text){
     return send(p,id,
 `👤 پروفایل شما
 
-💰 امتیاز: ${user.points}`);
+💰 امتیاز: ${user.points}`
+    );
   }
 
   if(text==="🎯 ماموریت روزانه"){
 
     let active = db.missionsList.filter(m =>
       m.status==="active" &&
-      !user.completed.includes(m.id)
+      !user.completed.includes(String(m.id))
     );
 
     if(active.length===0){
@@ -175,14 +164,8 @@ ${m.desc}
 🪙 ${m.points}`,{
         reply_markup:{
           inline_keyboard:[[
-            {
-              text:"🚀 شروع",
-              url:`${BASE_URL}/start/${p}/${id}/${m.id}`
-            },
-            {
-              text:"✅ انجام دادم",
-              url:`${BASE_URL}/claim/${p}/${id}/${m.id}`
-            }
+            { text:"🚀 شروع", url:`${BASE_URL}/start/${p}/${id}/${m.id}` },
+            { text:"✅ انجام دادم", url:`${BASE_URL}/claim/${p}/${id}/${m.id}` }
           ]]
         }
       });
@@ -227,6 +210,7 @@ async function listenBale(){
     for(let u of updates){
       offset = u.update_id+1;
       if(!u.message) continue;
+      if(!u.message.text) continue;
 
       handle("bale",u.message.chat.id,u.message.text);
     }
@@ -240,6 +224,7 @@ listenBale();
    START
 ========================= */
 app.get('/start/:p/:id/:mid',(req,res)=>{
+
   let {p,id,mid} = req.params;
 
   let db = loadDB();
@@ -259,13 +244,14 @@ app.get('/start/:p/:id/:mid',(req,res)=>{
    CLAIM
 ========================= */
 app.get('/claim/:p/:id/:mid',(req,res)=>{
+
   let {p,id,mid} = req.params;
 
   let db = loadDB();
   initUser(db,p,id);
 
   let user = db.users[p][id];
-  let mission = db.missionsList.find(m=>String(m.id)===String(mid));
+  let mission = db.missionsList.find(m => String(m.id) === String(mid));
 
   if(!mission) return res.send("❌ ماموریت نیست");
 
@@ -293,6 +279,7 @@ app.get('/claim/:p/:id/:mid',(req,res)=>{
    ADMIN
 ========================= */
 app.post('/admin/add-mission',(req,res)=>{
+
   let db=loadDB();
 
   db.missionsList.push({
