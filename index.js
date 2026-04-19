@@ -25,7 +25,7 @@ const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
-   BALE API
+   BALE
 ========================= */
 const baleBot = {
   async sendMessage(chat_id, text, options = {}) {
@@ -52,7 +52,6 @@ function loadDB(){
 
   if(!db.users) db.users = { telegram:{}, bale:{} };
   if(!db.missionsList) db.missionsList = [];
-  if(!db.messages) db.messages = [];
 
   return db;
 }
@@ -62,7 +61,7 @@ function saveDB(db){
 }
 
 /* =========================
-   BUTTONS (همه سر جاش)
+   BUTTONS
 ========================= */
 const BUTTONS = {
 "🚀 بازکردن برنامه":"https://click.adtrace.io/u2p3usf",
@@ -75,12 +74,12 @@ const BUTTONS = {
 "👥 دعوت از دوستان":"https://click.adtrace.io/px12hz6",
 "🌍 گردشگری":"https://click.adtrace.io/rer2tvj",
 "🚗 خدمات خودرو":"https://click.adtrace.io/wmz46ex",
-"🎫 بلیت و گردشگری":"https://click.adtrace.io/yvhn9xo",
+"🎫 بلیت":"https://click.adtrace.io/yvhn9xo",
 "💰 خدمات مالی":"https://click.adtrace.io/l3062zv"
 };
 
 /* =========================
-   MENU (FIX شده + کامل)
+   MENU
 ========================= */
 function buildMenu(){
   const keys = Object.keys(BUTTONS);
@@ -107,11 +106,11 @@ async function send(platform,id,text,options={}){
 }
 
 /* =========================
-   INIT USER
+   USER INIT
 ========================= */
-function initUser(db,platform,id){
-  if(!db.users[platform][id]){
-    db.users[platform][id]={
+function initUser(db,p,id){
+  if(!db.users[p][id]){
+    db.users[p][id]={
       points:0,
       completed:[],
       started:[]
@@ -122,51 +121,43 @@ function initUser(db,platform,id){
 /* =========================
    HANDLER
 ========================= */
-async function handle(platform,id,text){
+async function handle(p,id,text){
   let db = loadDB();
-  initUser(db,platform,id);
+  initUser(db,p,id);
   saveDB(db);
 
-  let user = db.users[platform][id];
+  let user = db.users[p][id];
 
   if(text==="/start"){
-    return send(platform,id,"🏠 منو:",{
-      reply_markup:{
-        keyboard:buildMenu(),
-        resize_keyboard:true
-      }
+    return send(p,id,"🏠 منو:",{
+      reply_markup:{ keyboard:buildMenu(), resize_keyboard:true }
     });
   }
 
-  /* =========================
-     PROFILE
-  ========================= */
+  /* PROFILE */
   if(text==="👤 پروفایل شما"){
-    return send(platform,id,
+    return send(p,id,
 `👤 پروفایل شما
 
-💰 امتیاز: ${user.points}
-
-🎯 انجام شده: ${user.completed.length}`
+💰 امتیاز: ${user.points}`
     );
   }
 
   /* =========================
-     MISSIONS (FIX اصلی اینجا بود)
+     🔥 FIX اصلی ماموریت
   ========================= */
   if(text==="🎯 ماموریت روزانه"){
 
     let active = db.missionsList.filter(m =>
-      m.status === "active" &&
-      !user.completed.includes(String(m.id))
+      String(m.status) === "active"
     );
 
     if(active.length === 0){
-      return send(platform,id,"⏳ ماموریت جدیدی نداری");
+      return send(p,id,"⏳ ماموریت فعالی نیست");
     }
 
     for(let m of active){
-      await send(platform,id,
+      await send(p,id,
 `${m.title}
 ${m.desc}
 🪙 ${m.points}`,{
@@ -174,11 +165,11 @@ ${m.desc}
           inline_keyboard:[[
             {
               text:"🚀 شروع",
-              url:`${BASE_URL}/start/${platform}/${id}/${m.id}`
+              url:`${BASE_URL}/start/${p}/${id}/${m.id}`
             },
             {
               text:"✅ انجام دادم",
-              url:`${BASE_URL}/claim/${platform}/${id}/${m.id}`
+              url:`${BASE_URL}/claim/${p}/${id}/${m.id}`
             }
           ]]
         }
@@ -188,27 +179,20 @@ ${m.desc}
     return;
   }
 
-  /* =========================
-     BUTTONS
-  ========================= */
+  /* BUTTONS */
   if(BUTTONS[text]){
-    return send(platform,id,"👇 ورود",{
+    return send(p,id,"👇 ورود",{
       reply_markup:{
-        inline_keyboard:[[
-          {
-            text:"🚀 باز کردن",
-            url:BUTTONS[text]
-          }
-        ]]
+        inline_keyboard:[[{
+          text:"🚀 باز کردن",
+          url:BUTTONS[text]
+        }]]
       }
     });
   }
 
-  return send(platform,id,"🏠 منو:",{
-    reply_markup:{
-      keyboard:buildMenu(),
-      resize_keyboard:true
-    }
+  return send(p,id,"🏠 منو:",{
+    reply_markup:{ keyboard:buildMenu(), resize_keyboard:true }
   });
 }
 
@@ -223,6 +207,7 @@ telegramBot.on('message', msg=>{
    BALE
 ========================= */
 let offset=0;
+
 async function listen(){
   try{
     let u=await baleBot.getUpdates(offset);
@@ -240,7 +225,7 @@ async function listen(){
 listen();
 
 /* =========================
-   CLAIM (بدون تغییر مهم)
+   CLAIM
 ========================= */
 app.get('/claim/:p/:id/:mid',(req,res)=>{
   let {p,id,mid}=req.params;
@@ -256,41 +241,14 @@ app.get('/claim/:p/:id/:mid',(req,res)=>{
   if(user.completed.includes(String(mid)))
     return res.send("❌ قبلاً انجام شده");
 
-  if(!user.started.includes(String(mid)))
-    return res.send("❌ اول شروع کن");
-
   user.points += Number(m.points);
   user.completed.push(String(mid));
 
   saveDB(db);
 
-  send(p,id,
-`🎉 انجام شد!
+  send(p,id,`🎉 +${m.points} امتیاز`);
 
-🪙 +${m.points}
-💰 مجموع: ${user.points}`
-  );
-
-  res.send("✅ ثبت شد");
-});
-
-/* =========================
-   START
-========================= */
-app.get('/start/:p/:id/:mid',(req,res)=>{
-  let {p,id,mid}=req.params;
-
-  let db=loadDB();
-  initUser(db,p,id);
-
-  let user=db.users[p][id];
-
-  if(!user.started.includes(String(mid))){
-    user.started.push(String(mid));
-    saveDB(db);
-  }
-
-  res.send("✅ ثبت شد");
+  res.send("ok");
 });
 
 /* =========================
@@ -305,21 +263,10 @@ app.post('/admin/add-mission',(req,res)=>{
     desc:req.body.desc,
     link:req.body.link,
     points:req.body.points,
-    type:req.body.type,
-    status:"inactive"
+    status:"active"
   });
 
   saveDB(db);
-  res.json({ok:true});
-});
-
-app.post('/admin/mission/toggle',(req,res)=>{
-  let db=loadDB();
-  let m=db.missionsList.find(x=>x.id==req.body.id);
-
-  m.status=req.body.status;
-  saveDB(db);
-
   res.json({ok:true});
 });
 
