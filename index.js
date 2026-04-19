@@ -1,3 +1,7 @@
+app.get("/", (req, res) => {
+  res.send("BOT IS RUNNING");
+});
+
 const express = require('express');
 const fs = require('fs');
 const axios = require('axios');
@@ -301,4 +305,8 @@ app.post('/admin/add-mission',(req,res)=>{
   res.json({ok:true});
 });
 
-app.listen(3000,()=>console.log("RUNNING"));
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("RUNNING ON PORT", PORT);
+});
