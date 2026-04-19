@@ -6,14 +6,27 @@ const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 app.use(express.json());
-app.use(express.static('public'));
 
 const upload = multer({ dest: 'uploads/' });
 
 /* =========================
+   RENDER FIX ⭐ مهم
+========================= */
+app.get("/", (req, res) => {
+  res.send("✅ Bot Server is Running");
+});
+
+/* اگر admin داری */
+app.get("/admin", (req, res) => {
+  res.sendFile(__dirname + "/public/admin.html");
+});
+
+app.use(express.static('public'));
+
+/* =========================
    CONFIG
 ========================= */
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = "https://bot-0o2j.onrender.com";
 
 /* =========================
    TOKENS
@@ -25,15 +38,11 @@ const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
-   BALE
+   BALE API
 ========================= */
 const baleBot = {
   async sendMessage(chat_id, text, options = {}) {
     return axios.post(`${BALE_API}/sendMessage`, { chat_id, text, ...options })
-      .then(r => r.data.result);
-  },
-  async sendPhoto(chat_id, photo, options = {}) {
-    return axios.post(`${BALE_API}/sendPhoto`, { chat_id, photo, ...options })
       .then(r => r.data.result);
   },
   async getUpdates(offset) {
@@ -49,10 +58,8 @@ const DB_FILE = './db.json';
 
 function loadDB(){
   let db = JSON.parse(fs.readFileSync(DB_FILE));
-
   if(!db.users) db.users = { telegram:{}, bale:{} };
   if(!db.missionsList) db.missionsList = [];
-
   return db;
 }
 
@@ -65,16 +72,7 @@ function saveDB(db){
 ========================= */
 const BUTTONS = {
 "🚀 بازکردن برنامه":"https://click.adtrace.io/u2p3usf",
-"🔄 بروزرسانی":"https://click.adtrace.io/zc7cgls",
-"💡 قبض":"https://click.adtrace.io/uzwe0u4",
 "💳 کارت به کارت":"https://click.adtrace.io/lhntx66",
-"❤️ نیکوکاری":"https://click.adtrace.io/5yb7mok",
-"📶 بسته اینترنتی":"https://click.adtrace.io/4pepzq6",
-"📱 شارژ":"https://click.adtrace.io/51ee6bd",
-"👥 دعوت از دوستان":"https://click.adtrace.io/px12hz6",
-"🌍 گردشگری":"https://click.adtrace.io/rer2tvj",
-"🚗 خدمات خودرو":"https://click.adtrace.io/wmz46ex",
-"🎫 بلیت":"https://click.adtrace.io/yvhn9xo",
 "💰 خدمات مالی":"https://click.adtrace.io/l3062zv"
 };
 
@@ -99,8 +97,8 @@ function buildMenu(){
 /* =========================
    SEND
 ========================= */
-async function send(platform,id,text,options={}){
-  return platform==="telegram"
+async function send(p,id,text,options={}){
+  return p==="telegram"
     ? telegramBot.sendMessage(id,text,options)
     : baleBot.sendMessage(id,text,options);
 }
@@ -134,26 +132,17 @@ async function handle(p,id,text){
     });
   }
 
-  /* PROFILE */
   if(text==="👤 پروفایل شما"){
-    return send(p,id,
-`👤 پروفایل شما
+    return send(p,id,`👤 پروفایل
 
-💰 امتیاز: ${user.points}`
-    );
+💰 امتیاز: ${user.points}`);
   }
 
-  /* =========================
-     🔥 FIX اصلی ماموریت
-  ========================= */
   if(text==="🎯 ماموریت روزانه"){
+    let active = db.missionsList.filter(m => m.status==="active");
 
-    let active = db.missionsList.filter(m =>
-      String(m.status) === "active"
-    );
-
-    if(active.length === 0){
-      return send(p,id,"⏳ ماموریت فعالی نیست");
+    if(active.length===0){
+      return send(p,id,"⏳ ماموریتی نیست");
     }
 
     for(let m of active){
@@ -163,23 +152,15 @@ ${m.desc}
 🪙 ${m.points}`,{
         reply_markup:{
           inline_keyboard:[[
-            {
-              text:"🚀 شروع",
-              url:`${BASE_URL}/start/${p}/${id}/${m.id}`
-            },
-            {
-              text:"✅ انجام دادم",
-              url:`${BASE_URL}/claim/${p}/${id}/${m.id}`
-            }
+            { text:"🚀 شروع", url:`${BASE_URL}/start/${p}/${id}/${m.id}` },
+            { text:"✅ انجام دادم", url:`${BASE_URL}/claim/${p}/${id}/${m.id}` }
           ]]
         }
       });
     }
-
     return;
   }
 
-  /* BUTTONS */
   if(BUTTONS[text]){
     return send(p,id,"👇 ورود",{
       reply_markup:{
@@ -191,7 +172,7 @@ ${m.desc}
     });
   }
 
-  return send(p,id,"🏠 منو:",{
+  send(p,id,"🏠 منو:",{
     reply_markup:{ keyboard:buildMenu(), resize_keyboard:true }
   });
 }
@@ -207,11 +188,9 @@ telegramBot.on('message', msg=>{
    BALE
 ========================= */
 let offset=0;
-
 async function listen(){
   try{
     let u=await baleBot.getUpdates(offset);
-
     for(let x of u){
       offset = x.update_id + 1;
       if(x.message){
@@ -219,7 +198,6 @@ async function listen(){
       }
     }
   }catch(e){}
-
   setTimeout(listen,1000);
 }
 listen();
@@ -228,27 +206,40 @@ listen();
    CLAIM
 ========================= */
 app.get('/claim/:p/:id/:mid',(req,res)=>{
+  let db=loadDB();
   let {p,id,mid}=req.params;
 
-  let db=loadDB();
-  initUser(db,p,id);
-
   let user=db.users[p][id];
-  let m=db.missionsList.find(x=>String(x.id)===String(mid));
+  let m=db.missionsList.find(x=>x.id==mid);
 
-  if(!m) return res.send("❌ ماموریت وجود ندارد");
+  if(!m) return res.send("❌ not found");
 
-  if(user.completed.includes(String(mid)))
-    return res.send("❌ قبلاً انجام شده");
+  if(user.completed.includes(mid))
+    return res.send("❌ done");
 
   user.points += Number(m.points);
-  user.completed.push(String(mid));
+  user.completed.push(mid);
 
   saveDB(db);
 
-  send(p,id,`🎉 +${m.points} امتیاز`);
+  send(p,id,`🎉 +${m.points}`);
 
-  res.send("ok");
+  res.send("OK");
+});
+
+/* =========================
+   START
+========================= */
+app.get('/start/:p/:id/:mid',(req,res)=>{
+  let db=loadDB();
+  let {p,id,mid}=req.params;
+
+  initUser(db,p,id);
+  db.users[p][id].started.push(mid);
+
+  saveDB(db);
+
+  res.send("OK");
 });
 
 /* =========================
@@ -258,7 +249,7 @@ app.post('/admin/add-mission',(req,res)=>{
   let db=loadDB();
 
   db.missionsList.push({
-    id:Date.now(),
+    id:Date.now().toString(),
     title:req.body.title,
     desc:req.body.desc,
     link:req.body.link,
@@ -270,4 +261,9 @@ app.post('/admin/add-mission',(req,res)=>{
   res.json({ok:true});
 });
 
-app.listen(3000,()=>console.log("http://localhost:3000/admin.html"));
+/* =========================
+   START SERVER
+========================= */
+app.listen(process.env.PORT || 3000, ()=>{
+  console.log("Server Running");
+});
