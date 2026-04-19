@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8">
+<title>Admin Panel</title>
+
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
+
+<style>
+*{font-family:Vazirmatn;text-align:center;}
+body{margin:0;background:#0b1220;color:white;}
+
+.sidebar{
+position:fixed;right:0;top:0;width:220px;height:100%;
+background:#111a2e;padding-top:20px;
+}
+
+.sidebar button{
+width:90%;margin:10px;padding:12px;
+background:#1e293b;color:white;border:none;border-radius:10px;
+}
+
+.main{margin-right:230px;padding:20px;}
+
+.card{
+background:#111a2e;padding:20px;margin:20px auto;
+border-radius:15px;max-width:600px;
+}
+
+input,textarea,select{
+width:90%;padding:10px;margin:5px;
+background:#1e293b;color:white;border:none;border-radius:10px;
+}
+
+button{
+padding:10px 15px;background:#3b82f6;
+border:none;border-radius:10px;color:white;margin:5px;
+}
+
+.mission,.msg{
+background:#0f172a;padding:15px;margin:10px auto;
+border-radius:12px;max-width:500px;
+}
+
+.page{display:none;}
+
+.switch input{display:none;}
+.switch span{
+width:50px;height:24px;background:#ccc;
+display:inline-block;border-radius:24px;position:relative;
+}
+.switch span::after{
+content:"";width:20px;height:20px;background:white;
+position:absolute;top:2px;right:2px;border-radius:50%;
+transition:.3s;
+}
+.switch input:checked + span{background:#22c55e;}
+.switch input:checked + span::after{right:28px;}
+
+.emoji-picker{
+position:fixed;
+bottom:90px;
+right:260px;
+background:#1e293b;
+padding:10px;
+border-radius:12px;
+width:260px;
+height:200px;
+overflow:auto;
+display:none;
+z-index:999;
+}
+
+.emoji-picker span{
+cursor:pointer;
+font-size:20px;
+padding:5px;
+display:inline-block;
+}
+
+.toolbar button{
+background:#1e293b;
+border:none;
+padding:8px 10px;
+margin:3px;
+border-radius:8px;
+color:white;
+cursor:pointer;
+}
+
+/* POPUP */
+#popup{
+position:fixed;
+top:40%;
+left:50%;
+transform:translate(-50%,-50%);
+background:#111a2e;
+padding:20px;
+border-radius:15px;
+display:none;
+z-index:9999;
+}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+<button onclick="show('missions')">🎯 ماموریت‌ها</button>
+<button onclick="show('missionList')">📋 لیست ماموریت‌ها</button>
+<button onclick="show('users')">👥 کاربران</button>
+<button onclick="show('messages')">📢 پیام‌ها</button>
+<button onclick="show('msglist')">📩 لیست پیام‌ها</button>
+</div>
+
+<div class="main">
+
+<!-- MISSIONS -->
+<div id="missions" class="page">
+<div class="card">
+<input id="title" placeholder="عنوان">
+<input id="desc" placeholder="توضیح">
+<input id="link" placeholder="لینک">
+<input id="points" placeholder="امتیاز">
+<select id="type">
+<option value="main">Main</option>
+<option value="side">Side</option>
+</select>
+<button onclick="addMission()">ساخت</button>
+</div>
+</div>
+
+<div id="missionList" class="page"></div>
+
+<!-- USERS -->
+<div id="users" class="page">
+<div class="card">
+<button onclick="loadUsers()">لود کاربران</button>
+<div id="userList"></div>
+</div>
+</div>
+
+<!-- MESSAGES -->
+<div id="messages" class="page">
+<div class="card">
+<h3>📢 ارسال پیام</h3>
+
+<div class="toolbar">
+<button onclick="execCmd('bold')"><b>B</b></button>
+<button onclick="execCmd('italic')"><i>I</i></button>
+<button onclick="createLink()">🔗 لینک</button>
+<button onclick="toggleEmoji()">😊 ایموجی</button>
+</div>
+
+<div id="editor" contenteditable="true"
+style="background:#1e293b;padding:10px;border-radius:10px;min-height:120px;"></div>
+
+<input type="file" id="file">
+<input id="btnText" placeholder="متن دکمه">
+<input id="btnLink" placeholder="لینک دکمه">
+<input id="schedule" placeholder="زمان ارسال">
+
+<button onclick="sendMsg()">ارسال</button>
+
+<div id="preview"></div>
+</div>
+</div>
+
+<!-- MESSAGE LIST -->
+<div id="msglist" class="page">
+<div class="card"><h3>📩 لیست پیام‌ها</h3></div>
+<div id="msgList"></div>
+</div>
+
+</div>
+
+<div id="emojiBox" class="emoji-picker"></div>
+
+<!-- POPUP -->
+<div id="popup">
+<div id="popupText"></div>
+<button onclick="closePopup()">تایید</button>
+</div>
+
+<script>
+
+/* NAV */
+function show(p){
+document.querySelectorAll('.page').forEach(e=>e.style.display='none');
+document.getElementById(p).style.display='block';
+
+if(p==='msglist') loadMessages();
+if(p==='missionList') loadMissions();
+}
+
+/* EMOJI */
+const emojis=["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","😘","😎","🤩","🥳","😡","😱","👍","👎","🙏","🔥","💯","🎉","❤️","✨","🚀","📱","💳","💰"];
+
+function toggleEmoji(){
+let box=document.getElementById("emojiBox");
+if(box.style.display==="block"){box.style.display="none";return;}
+box.innerHTML="";
+emojis.forEach(e=>{
+let s=document.createElement("span");
+s.innerText=e;
+s.onclick=()=>insertEmoji(e);
+box.appendChild(s);
+});
+box.style.display="block";
+}
+
+function insertEmoji(e){
+document.getElementById("editor").focus();
+document.execCommand("insertText",false,e);
+}
+
+/* FORMATTING */
+function execCmd(cmd){
+document.getElementById("editor").focus();
+document.execCommand(cmd,false,null);
+}
+
+function createLink(){
+let url=prompt("لینک:");
+if(url) document.execCommand("createLink",false,url);
+}
+
+/* POPUP */
+let popupAction=null;
+
+function showPopup(msg, action=null){
+document.getElementById("popupText").innerHTML=msg;
+document.getElementById("popup").style.display="block";
+popupAction=action;
+}
+
+function closePopup(){
+document.getElementById("popup").style.display="none";
+if(popupAction){
+popupAction();
+popupAction=null;
+}
+}
+
+/* MISSIONS */
+function loadMissions(){
+fetch('/admin/missions')
+.then(r=>r.json())
+.then(data=>{
+let html="";
+data.forEach(m=>{
+html+=`
+<div class="mission">
+<h3>${m.title}</h3>
+<p>${m.desc}</p>
+
+<label class="switch">
+<input type="checkbox"
+${m.status==="active"?"checked":""}
+onchange="toggleMission(${m.id},this.checked)">
+<span></span>
+</label>
+
+<button onclick="confirmDeleteMission(${m.id})">🗑 حذف</button>
+
+</div>`;
+});
+document.getElementById("missionList").innerHTML=html;
+});
+}
+
+function confirmDeleteMission(id){
+showPopup("آیا مطمئنی میخوای این ماموریت حذف بشه؟", ()=>{
+deleteMission(id);
+});
+}
+
+function deleteMission(id){
+fetch('/admin/delete-mission',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({id})
+}).then(()=>{
+loadMissions();
+showPopup("✅ ماموریت حذف شد");
+});
+}
+
+function addMission(){
+fetch('/admin/add-mission',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+title:title.value,
+desc:desc.value,
+link:link.value,
+points:points.value,
+type:type.value
+})
+}).then(()=>{
+loadMissions();
+showPopup("✅ ماموریت ساخته شد");
+});
+}
+
+function toggleMission(id,state){
+fetch('/admin/mission/toggle',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+id,
+status: state ? "active" : "inactive"
+})
+});
+}
+
+/* USERS */
+function loadUsers(){
+fetch('/admin/users')
+.then(r=>r.json())
+.then(data=>{
+let html="";
+Object.keys(data).forEach(id=>{
+html+=`<div class="mission">${id}</div>`;
+});
+document.getElementById("userList").innerHTML=html;
+});
+}
+
+/* MESSAGES */
+function loadMessages(){
+fetch('/admin/messages')
+.then(r=>r.json())
+.then(data=>{
+let html="";
+data.forEach(m=>{
+html+=`
+<div class="msg">
+<div>${m.text}</div>
+<button onclick="confirmDeleteMsg(${m.id})">🗑 حذف</button>
+</div>`;
+});
+document.getElementById("msgList").innerHTML=html;
+});
+}
+
+function confirmDeleteMsg(id){
+showPopup("آیا پیام حذف شود؟", ()=>{
+deleteMsg(id);
+});
+}
+
+function deleteMsg(id){
+fetch('/admin/delete-message',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({id})
+}).then(()=>{
+loadMessages();
+showPopup("🗑 پیام حذف شد");
+});
+}
+
+/* SEND */
+async function sendMsg(){
+
+let text=document.getElementById("editor").innerHTML;
+let fileInput=document.getElementById("file");
+let filePath=null;
+
+if(fileInput.files[0]){
+let form=new FormData();
+form.append("file",fileInput.files[0]);
+let res=await fetch('/upload',{method:'POST',body:form});
+let data=await res.json();
+filePath=data.path;
+}
+
+await fetch('/admin/broadcast',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+text,
+file:filePath,
+button:{
+text:document.getElementById("btnText").value,
+url:document.getElementById("btnLink").value
+},
+schedule:document.getElementById("schedule").value
+})
+});
+
+loadMessages();
+showPopup("📩 پیام ارسال شد");
+}
+
+/* PREVIEW */
+setInterval(()=>{
+document.getElementById("preview").innerHTML=
+document.getElementById("editor").innerHTML;
+},500);
+
+/* INIT */
+show('missions');
+loadMissions();
+loadUsers();
+
+</script>
+
+</body>
+</html>

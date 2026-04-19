@@ -1,0 +1,35 @@
+{
+  "users": {
+    "telegram": {
+      "1795489870": {
+        "points": 0
+      }
+    },
+    "bale": {
+      "100647878": {
+        "points": 0
+      },
+      "1097168897": {
+        "points": 0
+      },
+      "1223673307": {
+        "points": 0
+      },
+      "1249852081": {
+        "points": 0
+      }
+    }
+  },
+  "missionsList": [
+    {
+      "id": 1776559616519,
+      "title": "بله",
+      "desc": "بله",
+      "link": "https://google.com",
+      "points": "50",
+      "type": "main",
+      "status": "active"
+    }
+  ],
+  "messages": []
+}
