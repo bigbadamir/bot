@@ -1,19 +1,15 @@
 const express = require('express');
 const fs = require('fs');
 const axios = require('axios');
-const multer = require('multer');
 const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 app.use(express.json());
-app.use(express.static('public'));
-
-const upload = multer({ dest: 'uploads/' });
 
 /* =========================
-   CONFIG
+   ⚠️ لینک واقعی سرور
 ========================= */
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = "https://bot-0o2j.onrender.com";
 
 /* =========================
    TOKENS
@@ -25,15 +21,11 @@ const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
-   BALE API
+   BALE
 ========================= */
 const baleBot = {
   async sendMessage(chat_id, text, options = {}) {
     return axios.post(`${BALE_API}/sendMessage`, { chat_id, text, ...options })
-      .then(r => r.data.result);
-  },
-  async sendPhoto(chat_id, photo, options = {}) {
-    return axios.post(`${BALE_API}/sendPhoto`, { chat_id, photo, ...options })
       .then(r => r.data.result);
   },
   async getUpdates(offset) {
@@ -48,11 +40,14 @@ const baleBot = {
 const DB_FILE = './db.json';
 
 function loadDB(){
-  let db = JSON.parse(fs.readFileSync(DB_FILE));
+  let db = { users:{telegram:{},bale:{}}, missionsList:[] };
+
+  if(fs.existsSync(DB_FILE)){
+    db = JSON.parse(fs.readFileSync(DB_FILE));
+  }
 
   if(!db.users) db.users = { telegram:{}, bale:{} };
   if(!db.missionsList) db.missionsList = [];
-  if(!db.messages) db.messages = [];
 
   return db;
 }
@@ -62,53 +57,11 @@ function saveDB(db){
 }
 
 /* =========================
-   BUTTONS
+   USER
 ========================= */
-const BUTTONS = {
-"🚀 بازکردن برنامه":"https://click.adtrace.io/u2p3usf",
-"🔄 بروزرسانی":"https://click.adtrace.io/zc7cgls",
-"💡 قبض":"https://click.adtrace.io/uzwe0u4",
-"💳 کارت به کارت":"https://click.adtrace.io/lhntx66",
-"❤️ نیکوکاری":"https://click.adtrace.io/5yb7mok",
-"📶 بسته اینترنتی":"https://click.adtrace.io/4pepzq6",
-"📱 شارژ":"https://click.adtrace.io/51ee6bd",
-"👥 دعوت از دوستان":"https://click.adtrace.io/px12hz6",
-"🌍 گردشگری":"https://click.adtrace.io/rer2tvj",
-"🚗 خدمات خودرو":"https://click.adtrace.io/wmz46ex",
-"🎫 بلیت و گردشگری":"https://click.adtrace.io/yvhn9xo",
-"💰 خدمات مالی":"https://click.adtrace.io/l3062zv"
-};
-
-/* =========================
-   MENU
-========================= */
-function buildMenu(){
-  const keys = Object.keys(BUTTONS);
-  let keyboard = [];
-
-  for(let i=0;i<keys.length;i+=2){
-    keyboard.push(keys.slice(i,i+2));
-  }
-
-  return [
-    ["🎯 ماموریت روزانه"],
-    ["👤 پروفایل شما"],
-    ...keyboard
-  ];
-}
-
-async function send(platform,id,text,options={}){
-  return platform==="telegram"
-    ? telegramBot.sendMessage(id,text,options)
-    : baleBot.sendMessage(id,text,options);
-}
-
-/* =========================
-   USER INIT
-========================= */
-function initUser(db,platform,id){
-  if(!db.users[platform][id]){
-    db.users[platform][id]={
+function initUser(db,p,id){
+  if(!db.users[p][id]){
+    db.users[p][id]={
       points:0,
       completed:[],
       started:[]
@@ -117,43 +70,61 @@ function initUser(db,platform,id){
 }
 
 /* =========================
+   BUTTONS
+========================= */
+const BUTTONS = {
+"🚀 بازکردن برنامه":"https://click.adtrace.io/u2p3usf",
+"💳 کارت به کارت":"https://click.adtrace.io/lhntx66"
+};
+
+function menu(){
+  return [
+    ["🎯 ماموریت روزانه"],
+    ["👤 پروفایل شما"],
+    ...Object.keys(BUTTONS).map(x=>[x])
+  ];
+}
+
+/* =========================
+   SEND
+========================= */
+async function send(p,id,text,options={}){
+  return p==="telegram"
+    ? telegramBot.sendMessage(id,text,options)
+    : baleBot.sendMessage(id,text,options);
+}
+
+/* =========================
    HANDLER
 ========================= */
-async function handle(platform,id,text){
+async function handle(p,id,text){
   let db = loadDB();
-  initUser(db,platform,id);
+  initUser(db,p,id);
   saveDB(db);
 
-  let user = db.users[platform][id];
+  let user = db.users[p][id];
 
   if(text==="/start"){
-    return send(platform,id,"🏠 منو:",{
-      reply_markup:{ keyboard:buildMenu(), resize_keyboard:true }
+    return send(p,id,"🏠 منو:",{
+      reply_markup:{ keyboard:menu(), resize_keyboard:true }
     });
   }
 
-  /* PROFILE */
   if(text==="👤 پروفایل شما"){
-    return send(platform,id,
-`👤 پروفایل شما
-
-💰 امتیاز: ${user.points}`
-    );
+    return send(p,id,`💰 امتیاز شما: ${user.points}`);
   }
 
-  /* MISSIONS */
   if(text==="🎯 ماموریت روزانه"){
-
-    let active = db.missionsList.filter(m =>
+    let missions = db.missionsList.filter(m =>
       m.status==="active" &&
       !user.completed.includes(m.id)
     );
 
-    if(active.length===0)
-      return send(platform,id,"⏳ ماموریت جدیدی نداری");
+    if(!missions.length)
+      return send(p,id,"⏳ ماموریت جدید نداری");
 
-    for(let m of active){
-      await send(platform,id,
+    for(let m of missions){
+      await send(p,id,
 `${m.title}
 ${m.desc}
 🪙 ${m.points}`,{
@@ -161,33 +132,32 @@ ${m.desc}
           inline_keyboard:[[
             {
               text:"🚀 شروع",
-              url:`${BASE_URL}/start/${platform}/${id}/${m.id}`
+              url:`${BASE_URL}/start/${p}/${id}/${m.id}`
             },
             {
               text:"✅ انجام دادم",
-              url:`${BASE_URL}/claim/${platform}/${id}/${m.id}`
+              url:`${BASE_URL}/claim/${p}/${id}/${m.id}`
             }
           ]]
         }
       });
     }
-
     return;
   }
 
   if(BUTTONS[text]){
-    return send(platform,id,"👇 ورود",{
+    return send(p,id,"👇 ورود",{
       reply_markup:{
         inline_keyboard:[[{
-          text:"🚀 باز کردن",
+          text:"باز کن",
           url:BUTTONS[text]
         }]]
       }
     });
   }
 
-  send(platform,id,"🏠 منو:",{
-    reply_markup:{ keyboard:buildMenu(), resize_keyboard:true }
+  send(p,id,"🏠 منو:",{
+    reply_markup:{ keyboard:menu(), resize_keyboard:true }
   });
 }
 
@@ -195,79 +165,72 @@ ${m.desc}
    TELEGRAM
 ========================= */
 telegramBot.on('message', msg=>{
-  if(!msg.text) return;
-  handle("telegram", msg.chat.id, msg.text);
+  if(msg.text) handle("telegram",msg.chat.id,msg.text);
 });
 
 /* =========================
    BALE
 ========================= */
-let offset = 0;
-
-async function listenBale(){
+let offset=0;
+async function listen(){
   try{
-    let updates = await baleBot.getUpdates(offset);
-
+    let updates=await baleBot.getUpdates(offset);
     for(let u of updates){
-      offset = u.update_id + 1;
-      if(!u.message) continue;
-
-      handle("bale", u.message.chat.id, u.message.text);
+      offset=u.update_id+1;
+      if(u.message)
+        handle("bale",u.message.chat.id,u.message.text);
     }
   }catch(e){}
-
-  setTimeout(listenBale,1000);
+  setTimeout(listen,1000);
 }
-listenBale();
+listen();
 
 /* =========================
-   START (مرحله اول)
+   START
 ========================= */
-app.get('/start/:platform/:id/:mid',(req,res)=>{
-  let {platform,id,mid} = req.params;
+app.get('/start/:p/:id/:mid',(req,res)=>{
+  let {p,id,mid}=req.params;
 
-  let db = loadDB();
-  initUser(db,platform,id);
+  let db=loadDB();
+  initUser(db,p,id);
 
-  let user = db.users[platform][id];
+  let user=db.users[p][id];
 
   if(!user.started.includes(mid)){
     user.started.push(mid);
     saveDB(db);
   }
 
-  res.send("✅ ثبت شد، حالا برگرد و انجام بده");
+  res.send("✅ ثبت شد، برگرد داخل بات");
 });
 
 /* =========================
-   CLAIM (تایید واقعی)
+   CLAIM (ضد تقلب + امتیاز)
 ========================= */
-app.get('/claim/:platform/:id/:mid',(req,res)=>{
-  let {platform,id,mid} = req.params;
+app.get('/claim/:p/:id/:mid',(req,res)=>{
+  let {p,id,mid}=req.params;
 
-  let db = loadDB();
-  initUser(db,platform,id);
+  let db=loadDB();
+  initUser(db,p,id);
 
-  let user = db.users[platform][id];
-  let mission = db.missionsList.find(m=>m.id==mid);
+  let user=db.users[p][id];
+  let mission=db.missionsList.find(m=>m.id==mid);
 
-  if(!mission) return res.send("❌ وجود ندارد");
+  if(!mission) return res.send("❌ ماموریت نیست");
 
   if(user.completed.includes(mid))
-    return res.send("❌ قبلاً انجام دادی");
+    return res.send("❌ قبلاً گرفتی");
 
-  /* 🔥 شرط تایید واقعی */
   if(!user.started.includes(mid))
-    return res.send("❌ اول باید شروع کنی!");
+    return res.send("❌ اول شروع کن!");
 
   user.points += Number(mission.points);
   user.completed.push(mid);
 
   saveDB(db);
 
-  send(platform,id,
-`🎉 ماموریت انجام شد!
-
+  send(p,id,
+`🎉 انجام شد!
 🪙 +${mission.points}
 💰 مجموع: ${user.points}`
   );
@@ -276,11 +239,10 @@ app.get('/claim/:platform/:id/:mid',(req,res)=>{
 });
 
 /* =========================
-   ADMIN (بدون تغییر)
+   ADMIN ساده
 ========================= */
-
 app.post('/admin/add-mission',(req,res)=>{
-  let db = loadDB();
+  let db=loadDB();
 
   db.missionsList.push({
     id:Date.now(),
@@ -288,22 +250,14 @@ app.post('/admin/add-mission',(req,res)=>{
     desc:req.body.desc,
     link:req.body.link,
     points:req.body.points,
-    type:req.body.type,
-    status:"inactive"
+    status:"active"
   });
 
   saveDB(db);
   res.json({ok:true});
 });
 
-app.post('/admin/mission/toggle',(req,res)=>{
-  let db = loadDB();
-  let m = db.missionsList.find(x=>x.id==req.body.id);
-
-  m.status = req.body.status;
-  saveDB(db);
-
-  res.json({ok:true});
-});
-
-app.listen(3000,()=>console.log("http://localhost:3000/admin.html"));
+/* =========================
+   RUN
+========================= */
+app.listen(3000,()=>console.log("RUNNING"));
