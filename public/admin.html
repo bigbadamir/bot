@@ -79,16 +79,6 @@ padding:6px;
 display:inline-block;
 }
 
-.toolbar button{
-background:#1e293b;
-border:none;
-padding:8px 10px;
-margin:3px;
-border-radius:8px;
-color:white;
-cursor:pointer;
-}
-
 #popup{
 position:fixed;
 top:40%;
@@ -115,7 +105,7 @@ z-index:9999;
 
 <div class="main">
 
-<!-- MISSIONS -->
+<!-- CREATE -->
 <div id="missions" class="page">
 <div class="card">
 <input id="title" placeholder="عنوان">
@@ -130,7 +120,7 @@ z-index:9999;
 </div>
 </div>
 
-<!-- MISSION LIST -->
+<!-- LIST -->
 <div id="missionList" class="page"></div>
 
 <!-- USERS -->
@@ -145,29 +135,12 @@ z-index:9999;
 <div id="messages" class="page">
 <div class="card">
 <h3>📢 ارسال پیام</h3>
-
-<div class="toolbar">
-<button onclick="execCmd('bold')"><b>B</b></button>
-<button onclick="execCmd('italic')"><i>I</i></button>
-<button onclick="createLink()">🔗 لینک</button>
-<button onclick="toggleEmoji()">😊 ایموجی</button>
-</div>
-
-<div id="editor" contenteditable="true"
-style="background:#1e293b;padding:10px;border-radius:10px;min-height:120px;"></div>
-
-<input type="file" id="file">
-<input id="btnText" placeholder="متن دکمه">
-<input id="btnLink" placeholder="لینک دکمه">
-<input id="schedule" placeholder="زمان ارسال">
-
+<div id="editor" contenteditable="true" style="background:#1e293b;padding:10px;border-radius:10px;min-height:120px;"></div>
 <button onclick="sendMsg()">ارسال</button>
-
-<div id="preview"></div>
 </div>
 </div>
 
-<!-- MESSAGE LIST -->
+<!-- MSG LIST -->
 <div id="msglist" class="page">
 <div class="card"><h3>📩 لیست پیام‌ها</h3></div>
 <div id="msgList"></div>
@@ -175,10 +148,6 @@ style="background:#1e293b;padding:10px;border-radius:10px;min-height:120px;"></d
 
 </div>
 
-<!-- EMOJI BOX -->
-<div id="emojiBox" class="emoji-picker"></div>
-
-<!-- POPUP -->
 <div id="popup">
 <div id="popupText"></div>
 <button onclick="closePopup()">تایید</button>
@@ -191,77 +160,48 @@ function show(p){
 document.querySelectorAll('.page').forEach(e=>e.style.display='none');
 document.getElementById(p).style.display='block';
 
-if(p==='msglist') loadMessages();
 if(p==='missionList') loadMissions();
+if(p==='msglist') loadMessages();
 }
 
-/* EMOJI */
-const emojis=[
-"😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","😘",
-"😎","🤩","🥳","😡","😱","👍","👎","🙏","🔥","💯","🎉","❤️",
-"✨","🚀","📱","💳","💰","⚡","🎯","🧠","💡"
-];
-
-function toggleEmoji(){
-let box=document.getElementById("emojiBox");
-if(box.style.display==="block"){box.style.display="none";return;}
-
-box.innerHTML="";
-emojis.forEach(e=>{
-let s=document.createElement("span");
-s.innerText=e;
-s.onclick=()=>insertEmoji(e);
-box.appendChild(s);
-});
-
-box.style.display="block";
-}
-
-function insertEmoji(e){
-document.getElementById("editor").focus();
-document.execCommand("insertText",false,e);
-}
-
-/* TEXT */
-function execCmd(cmd){
-document.getElementById("editor").focus();
-document.execCommand(cmd,false,null);
-}
-
-function createLink(){
-let url=prompt("لینک:");
-if(url) document.execCommand("createLink",false,url);
+/* FORCE NO CACHE */
+function nocache(url){
+return url + '?t=' + Date.now();
 }
 
 /* MISSIONS */
-function loadMissions(){
-fetch('/admin/missions')
-.then(r=>r.json())
-.then(data=>{
-let html="";
+async function loadMissions(){
+let res = await fetch(nocache('/admin/missions'));
+let data = await res.json();
+
+let html = "";
 data.forEach(m=>{
-html+=`
+html += `
 <div class="mission">
 <h3>${m.title}</h3>
 <p>${m.desc}</p>
 
+<input value="${m.title}" id="t${m.id}">
+<input value="${m.desc}" id="d${m.id}">
+<input value="${m.link}" id="l${m.id}">
+<input value="${m.points}" id="p${m.id}">
+
 <label class="switch">
-<input type="checkbox"
-${m.status==="active"?"checked":""}
+<input type="checkbox" ${m.status==="active"?"checked":""}
 onchange="toggleMission(${m.id},this.checked)">
 <span></span>
 </label>
 
+<button onclick="editMission(${m.id})">✏️ ادیت</button>
 <button onclick="deleteMission(${m.id})">🗑 حذف</button>
-
 </div>`;
 });
-document.getElementById("missionList").innerHTML=html;
-});
+
+document.getElementById("missionList").innerHTML = html;
 }
 
-function addMission(){
-fetch('/admin/add-mission',{
+async function addMission(){
+await fetch('/admin/add-mission',{
 method:'POST',
 headers:{'Content-Type':'application/json'},
 body:JSON.stringify({
@@ -271,20 +211,19 @@ link:link.value,
 points:points.value,
 type:type.value
 })
-}).then(()=>{
-loadMissions();
-showPopup("✅ ساخته شد");
 });
+
+title.value="";desc.value="";link.value="";points.value="";
+
+await loadMissions();
+showPopup("✅ اضافه شد");
 }
 
 function toggleMission(id,state){
 fetch('/admin/mission/toggle',{
 method:'POST',
 headers:{'Content-Type':'application/json'},
-body:JSON.stringify({
-id,
-status: state ? "active" : "inactive"
-})
+body:JSON.stringify({id,status:state?"active":"inactive"})
 }).then(loadMissions);
 }
 
@@ -293,9 +232,24 @@ fetch('/admin/delete-mission',{
 method:'POST',
 headers:{'Content-Type':'application/json'},
 body:JSON.stringify({id})
+}).then(loadMissions);
+}
+
+/* EDIT */
+function editMission(id){
+fetch('/admin/edit-mission',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+id,
+title:document.getElementById('t'+id).value,
+desc:document.getElementById('d'+id).value,
+link:document.getElementById('l'+id).value,
+points:document.getElementById('p'+id).value
+})
 }).then(()=>{
 loadMissions();
-showPopup("🗑 حذف شد");
+showPopup("✏️ ویرایش شد");
 });
 }
 
@@ -319,79 +273,35 @@ fetch('/admin/messages')
 .then(data=>{
 let html="";
 data.forEach(m=>{
-html+=`
-<div class="msg">
-<div>${m.text}</div>
-<button onclick="deleteMsg(${m.id})">🗑 حذف</button>
-</div>`;
+html+=`<div class="msg">${m.text}</div>`;
 });
 document.getElementById("msgList").innerHTML=html;
 });
 }
 
-function deleteMsg(id){
-fetch('/admin/delete-message',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body:JSON.stringify({id})
-}).then(()=>{
-loadMessages();
-showPopup("حذف شد");
-});
-}
-
 /* SEND */
 async function sendMsg(){
-let text=document.getElementById("editor").innerHTML;
-let fileInput=document.getElementById("file");
-let filePath=null;
-
-if(fileInput.files[0]){
-let form=new FormData();
-form.append("file",fileInput.files[0]);
-let res=await fetch('/upload',{method:'POST',body:form});
-let data=await res.json();
-filePath=data.path;
-}
-
 await fetch('/admin/broadcast',{
 method:'POST',
 headers:{'Content-Type':'application/json'},
-body:JSON.stringify({
-text,
-file:filePath,
-button:{
-text:btnText.value,
-url:btnLink.value
-},
-schedule:schedule.value
-})
+body:JSON.stringify({text:editor.innerHTML})
 });
 
-loadMessages();
 showPopup("📩 ارسال شد");
 }
 
-/* PREVIEW */
-setInterval(()=>{
-document.getElementById("preview").innerHTML=
-document.getElementById("editor").innerHTML;
-},500);
-
 /* POPUP */
-function showPopup(msg){
-document.getElementById("popupText").innerText=msg;
-document.getElementById("popup").style.display="block";
+function showPopup(t){
+popupText.innerText=t;
+popup.style.display="block";
 }
-
 function closePopup(){
-document.getElementById("popup").style.display="none";
+popup.style.display="none";
 }
 
 /* INIT */
 show('missions');
 loadMissions();
-loadUsers();
 
 </script>
 
