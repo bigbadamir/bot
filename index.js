@@ -36,7 +36,7 @@ const baleBot = {
 };
 
 /* =========================
-   DB (FIXED)
+   DB
 ========================= */
 const DB_FILE = './db.json';
 
@@ -44,8 +44,6 @@ function loadDB(){
   try{
     let raw = fs.readFileSync(DB_FILE,'utf8');
     let db = JSON.parse(raw);
-
-    if(typeof db !== "object" || db === null) throw "bad";
 
     db.users = db.users || {telegram:{},bale:{}};
     db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
@@ -166,7 +164,7 @@ ${m.desc}
         reply_markup:{
           inline_keyboard:[[
             { text:"🚀 شروع", url: m.link },
-            { text:"✅ انجام دادم", url:`${BASE_URL}/claim/${p}/${id}/${m.id}` }
+            { text:"✅ انجام دادم", callback_data:`CLAIM_${p}_${id}_${m.id}` }
           ]]
         }
       });
@@ -192,11 +190,49 @@ ${m.desc}
 }
 
 /* =========================
-   TELEGRAM
+   TELEGRAM MESSAGE
 ========================= */
 telegramBot.on('message',msg=>{
   if(!msg.text) return;
   handle("telegram",msg.chat.id,msg.text);
+});
+
+/* =========================
+   CALLBACK ONLY (NO LINK)
+========================= */
+telegramBot.on('callback_query', async query => {
+
+  const data = query.data;
+  if(!data || !data.startsWith("CLAIM_")) return;
+
+  const [_, p, id, mid] = data.split("_");
+
+  let db = loadDB();
+  initUser(db,p,id);
+
+  let user = db.users[p][id];
+  let mission = db.missionsList.find(m=>String(m.id)===String(mid));
+
+  if(!mission){
+    return telegramBot.answerCallbackQuery(query.id,{text:"❌ ماموریت نیست"});
+  }
+
+  if(user.completed.includes(mid)){
+    return telegramBot.answerCallbackQuery(query.id,{text:"❌ قبلاً انجام دادی"});
+  }
+
+  user.points += Number(mission.points);
+  user.completed.push(mid);
+
+  saveDB(db);
+
+  await telegramBot.answerCallbackQuery(query.id,{text:"🎉 امتیاز گرفتی"});
+
+  await telegramBot.sendMessage(id,
+`🎉 انجام شد
+
++${mission.points}
+💰 ${user.points}`);
 });
 
 /* =========================
@@ -221,71 +257,29 @@ async function listenBale(){
 listenBale();
 
 /* =========================
-   CLAIM
-========================= */
-app.get('/claim/:p/:id/:mid',(req,res)=>{
-  let db=loadDB();
-  let {p,id,mid}=req.params;
-
-  initUser(db,p,id);
-  let user=db.users[p][id];
-
-  let mission=db.missionsList.find(m=>String(m.id)===String(mid));
-
-  if(!mission) return res.send("❌");
-
-  if(user.completed.includes(mid)) return res.send("❌ تکراری");
-
-  user.points += Number(mission.points);
-  user.completed.push(mid);
-
-  saveDB(db);
-
-  send(p,id,`🎉 +${mission.points}\n💰 ${user.points}`);
-
-  res.send("OK");
-});
-
-/* =========================
-   ADMIN ADD (FIXED)
+   ADMIN
 ========================= */
 app.post('/admin/add-mission',(req,res)=>{
   let db=loadDB();
 
-  let title = (req.body.title || "").trim();
-  let desc = (req.body.desc || "").trim();
-  let link = (req.body.link || "").trim();
-  let points = Number(req.body.points || 0);
-
-  if(!title || !link){
-    return res.json({ok:false,error:"invalid"});
-  }
-
   db.missionsList.push({
     id: Date.now(),
-    title,
-    desc,
-    link,
-    points,
+    title:req.body.title,
+    desc:req.body.desc,
+    link:req.body.link,
+    points:Number(req.body.points),
     status:"inactive"
   });
 
   saveDB(db);
-
   res.json({ok:true});
 });
 
-/* =========================
-   ADMIN LIST
-========================= */
 app.get('/admin/missions',(req,res)=>{
   let db=loadDB();
   res.json(db.missionsList);
 });
 
-/* =========================
-   DELETE
-========================= */
 app.post('/admin/delete-mission',(req,res)=>{
   let db=loadDB();
 
@@ -294,13 +288,9 @@ app.post('/admin/delete-mission',(req,res)=>{
   );
 
   saveDB(db);
-
   res.json({ok:true});
 });
 
-/* =========================
-   TOGGLE
-========================= */
 app.post('/admin/mission/toggle',(req,res)=>{
   let db=loadDB();
 
@@ -308,7 +298,6 @@ app.post('/admin/mission/toggle',(req,res)=>{
   if(!m) return res.json({ok:false});
 
   m.status=req.body.status;
-
   saveDB(db);
 
   res.json({ok:true});
@@ -318,5 +307,4 @@ app.post('/admin/mission/toggle',(req,res)=>{
    SERVER
 ========================= */
 app.listen(3000,()=>console.log("RUNNING"));
-
 app.get("/",(req,res)=>res.send("OK"));
