@@ -11,13 +11,6 @@ app.use(express.static('public'));
 /* =========================
    CONFIG
 ========================= */
-const BASE_URL = process.env.BASE_URL || "https://bot-0o2j.onrender.com";
-
-/*
-  برای ماندگاری روی Render اگر Persistent Disk داری:
-  DB_FILE=/var/data/db.json
-  یا هر مسیری که روی دیسک mount کرده‌ای
-*/
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'db.json');
 
 /* =========================
@@ -129,6 +122,42 @@ function initUser(db, p, id) {
 }
 
 /* =========================
+   HELPERS
+========================= */
+function findMission(db, mid) {
+  return db.missionsList.find(m => String(m.id) === String(mid));
+}
+
+function claimMission(db, p, id, mid) {
+  initUser(db, p, id);
+
+  const user = db.users[p][id];
+  const mission = findMission(db, mid);
+
+  if (!mission) {
+    return { ok: false, message: "❌ ماموریت وجود ندارد" };
+  }
+
+  if (user.completed.includes(String(mid))) {
+    return { ok: false, message: "⚠️ قبلاً این ماموریت را انجام دادی" };
+  }
+
+  user.points += Number(mission.points || 0);
+  user.completed.push(String(mid));
+
+  saveDB(db);
+
+  return {
+    ok: true,
+    message:
+`🎉 ماموریت تایید شد
+
+➕ +${mission.points}
+💰 مجموع امتیاز: ${user.points}`
+  };
+}
+
+/* =========================
    BUTTONS
 ========================= */
 const BUTTONS = {
@@ -165,57 +194,6 @@ async function send(p, id, text, options = {}) {
     return telegramBot.sendMessage(id, text, options);
   }
   return baleBot.sendMessage(id, text, options);
-}
-
-/* =========================
-   HELPERS
-========================= */
-function findMission(db, mid) {
-  return db.missionsList.find(m => String(m.id) === String(mid));
-}
-
-function recordStart(db, p, id, mid) {
-  initUser(db, p, id);
-  const user = db.users[p][id];
-
-  if (!user.started.includes(String(mid))) {
-    user.started.push(String(mid));
-  }
-
-  saveDB(db);
-}
-
-function claimMission(db, p, id, mid) {
-  initUser(db, p, id);
-
-  const user = db.users[p][id];
-  const mission = findMission(db, mid);
-
-  if (!mission) {
-    return { ok: false, message: "❌ ماموریت وجود ندارد" };
-  }
-
-  if (user.completed.includes(String(mid))) {
-    return { ok: false, message: "⚠️ قبلاً این ماموریت را انجام دادی" };
-  }
-
-  if (!user.started.includes(String(mid))) {
-    return { ok: false, message: "⛔ اول باید روی شروع بزنی و لینک مأموریت باز شود" };
-  }
-
-  user.points += Number(mission.points || 0);
-  user.completed.push(String(mid));
-
-  saveDB(db);
-
-  return {
-    ok: true,
-    message:
-`🎉 ماموریت تایید شد
-
-➕ +${mission.points}
-💰 مجموع امتیاز: ${user.points}`
-  };
 }
 
 /* =========================
@@ -260,7 +238,7 @@ ${m.desc}
             inline_keyboard: [[
               {
                 text: "▶️ شروع",
-                url: `${BASE_URL}/start/${p}/${id}/${m.id}`
+                url: String(m.link || "").trim()
               },
               {
                 text: "🚀 انجام دادم",
@@ -372,38 +350,12 @@ async function listenBale() {
 listenBale();
 
 /* =========================
-   START TRACK + REDIRECT
+   LEGACY ROUTES
 ========================= */
 app.get('/start/:p/:id/:mid', (req, res) => {
-  try {
-    const { p, id, mid } = req.params;
-    const db = loadDB();
-
-    initUser(db, p, String(id));
-
-    const mission = findMission(db, String(mid));
-
-    if (!mission) {
-      return res.status(404).send("Mission not found");
-    }
-
-    const realMissionLink = String(mission.link || "").trim();
-
-    if (!realMissionLink) {
-      return res.status(400).send("Mission link not found");
-    }
-
-    recordStart(db, p, String(id), String(mid));
-
-    return res.redirect(realMissionLink);
-  } catch (e) {
-    return res.status(500).send("Start tracking failed");
-  }
+  return res.send("disabled");
 });
 
-/* =========================
-   LEGACY CLAIM ROUTE
-========================= */
 app.get('/claim/:p/:id/:mid', (req, res) => {
   return res.send("disabled");
 });
