@@ -48,12 +48,25 @@ const baleBot = {
 const DB_FILE = './db.json';
 
 function loadDB(){
-  let db = JSON.parse(fs.readFileSync(DB_FILE));
+  try {
+    let raw = fs.readFileSync(DB_FILE, 'utf8');
+    let db = JSON.parse(raw);
 
-  if(!db.users) db.users = { telegram:{}, bale:{} };
-  if(!db.missionsList) db.missionsList = [];
+    if(!db.users) db.users = { telegram:{}, bale:{} };
+    if(!db.missionsList) db.missionsList = [];
+    if(!db.messages) db.messages = [];
 
-  return db;
+    return db;
+
+  } catch (e) {
+    console.log("DB corrupted, resetting...");
+
+    return {
+      users: { telegram:{}, bale:{} },
+      missionsList: [],
+      messages: []
+    };
+  }
 }
 
 function saveDB(db){
