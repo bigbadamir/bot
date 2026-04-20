@@ -64,7 +64,6 @@ function ensureDbFile() {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-
   if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify(getFreshDB(), null, 2), 'utf8');
   }
@@ -126,6 +125,19 @@ function initUser(db, p, id) {
 ========================= */
 function findMission(db, mid) {
   return db.missionsList.find(m => String(m.id) === String(mid));
+}
+
+function getAllUsers(db) {
+  const out = [];
+
+  for (const p of Object.keys(db.users || {})) {
+    const group = db.users[p] || {};
+    for (const id of Object.keys(group)) {
+      out.push({ platform: p, id: String(id) });
+    }
+  }
+
+  return out;
 }
 
 function claimMission(db, p, id, mid) {
@@ -227,6 +239,8 @@ async function handle(p, id, text) {
     }
 
     for (const m of active) {
+      const missionLink = String(m.link || "").trim();
+
       await send(
         p,
         id,
@@ -238,7 +252,7 @@ ${m.desc}
             inline_keyboard: [[
               {
                 text: "▶️ شروع",
-                url: String(m.link || "").trim()
+                url: missionLink
               },
               {
                 text: "🚀 انجام دادم",
@@ -380,6 +394,7 @@ app.post('/admin/add-mission', (req, res) => {
     const desc = (req.body.desc || "").trim();
     const link = (req.body.link || "").trim();
     const points = Number(req.body.points || 0);
+    const type = (req.body.type || "main").trim();
 
     if (!title || !link) {
       return res.json({ ok: false, error: "invalid" });
@@ -391,6 +406,7 @@ app.post('/admin/add-mission', (req, res) => {
       desc,
       link,
       points,
+      type,
       status: "inactive"
     });
 
@@ -425,6 +441,59 @@ app.post('/admin/mission/toggle', (req, res) => {
 
     m.status = req.body.status;
     saveDB(db);
+
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.json({ ok: false });
+  }
+});
+
+app.get('/admin/users', (req, res) => {
+  try {
+    const db = loadDB();
+    const flat = {};
+
+    for (const item of getAllUsers(db)) {
+      flat[`${item.platform}:${item.id}`] = true;
+    }
+
+    return res.json(flat);
+  } catch (e) {
+    return res.json({});
+  }
+});
+
+app.get('/admin/messages', (req, res) => {
+  try {
+    const db = loadDB();
+    return res.json(db.messages || []);
+  } catch (e) {
+    return res.json([]);
+  }
+});
+
+app.post('/admin/broadcast', async (req, res) => {
+  try {
+    const db = loadDB();
+    const text = String(req.body.text || "").trim();
+
+    if (!text) {
+      return res.json({ ok: false });
+    }
+
+    db.messages.push({
+      id: Date.now(),
+      text
+    });
+    saveDB(db);
+
+    const users = getAllUsers(db);
+
+    for (const u of users) {
+      try {
+        await send(u.platform, u.id, text);
+      } catch (_) {}
+    }
 
     return res.json({ ok: true });
   } catch (e) {
