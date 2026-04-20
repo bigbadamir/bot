@@ -331,3 +331,24 @@ app.listen(PORT, () => {
 app.get("/", (req, res) => {
   res.send("BOT IS RUNNING");
 });
+
+app.post('/admin/toggle-mission', (req, res) => {
+  let db = loadDB();
+
+  const { id } = req.body;
+
+  let mission = db.missionsList.find(m => String(m.id) === String(id));
+
+  if (!mission) {
+    return res.json({ ok: false, error: "mission not found" });
+  }
+
+  mission.status = mission.status === "active" ? "inactive" : "active";
+
+  saveDB(db);
+
+  res.json({
+    ok: true,
+    newStatus: mission.status
+  });
+});

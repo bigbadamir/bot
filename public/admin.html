@@ -35,6 +35,7 @@ background:#1e293b;color:white;border:none;border-radius:10px;
 button{
 padding:10px 15px;background:#3b82f6;
 border:none;border-radius:10px;color:white;margin:5px;
+cursor:pointer;
 }
 
 .mission,.msg{
@@ -73,8 +74,8 @@ z-index:999;
 
 .emoji-picker span{
 cursor:pointer;
-font-size:20px;
-padding:5px;
+font-size:22px;
+padding:6px;
 display:inline-block;
 }
 
@@ -88,7 +89,6 @@ color:white;
 cursor:pointer;
 }
 
-/* POPUP */
 #popup{
 position:fixed;
 top:40%;
@@ -130,6 +130,7 @@ z-index:9999;
 </div>
 </div>
 
+<!-- MISSION LIST -->
 <div id="missionList" class="page"></div>
 
 <!-- USERS -->
@@ -174,6 +175,7 @@ style="background:#1e293b;padding:10px;border-radius:10px;min-height:120px;"></d
 
 </div>
 
+<!-- EMOJI BOX -->
 <div id="emojiBox" class="emoji-picker"></div>
 
 <!-- POPUP -->
@@ -194,11 +196,16 @@ if(p==='missionList') loadMissions();
 }
 
 /* EMOJI */
-const emojis=["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","😘","😎","🤩","🥳","😡","😱","👍","👎","🙏","🔥","💯","🎉","❤️","✨","🚀","📱","💳","💰"];
+const emojis=[
+"😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","😘",
+"😎","🤩","🥳","😡","😱","👍","👎","🙏","🔥","💯","🎉","❤️",
+"✨","🚀","📱","💳","💰","⚡","🎯","🧠","💡"
+];
 
 function toggleEmoji(){
 let box=document.getElementById("emojiBox");
 if(box.style.display==="block"){box.style.display="none";return;}
+
 box.innerHTML="";
 emojis.forEach(e=>{
 let s=document.createElement("span");
@@ -206,6 +213,7 @@ s.innerText=e;
 s.onclick=()=>insertEmoji(e);
 box.appendChild(s);
 });
+
 box.style.display="block";
 }
 
@@ -214,7 +222,7 @@ document.getElementById("editor").focus();
 document.execCommand("insertText",false,e);
 }
 
-/* FORMATTING */
+/* TEXT */
 function execCmd(cmd){
 document.getElementById("editor").focus();
 document.execCommand(cmd,false,null);
@@ -223,23 +231,6 @@ document.execCommand(cmd,false,null);
 function createLink(){
 let url=prompt("لینک:");
 if(url) document.execCommand("createLink",false,url);
-}
-
-/* POPUP */
-let popupAction=null;
-
-function showPopup(msg, action=null){
-document.getElementById("popupText").innerHTML=msg;
-document.getElementById("popup").style.display="block";
-popupAction=action;
-}
-
-function closePopup(){
-document.getElementById("popup").style.display="none";
-if(popupAction){
-popupAction();
-popupAction=null;
-}
 }
 
 /* MISSIONS */
@@ -261,28 +252,11 @@ onchange="toggleMission(${m.id},this.checked)">
 <span></span>
 </label>
 
-<button onclick="confirmDeleteMission(${m.id})">🗑 حذف</button>
+<button onclick="deleteMission(${m.id})">🗑 حذف</button>
 
 </div>`;
 });
 document.getElementById("missionList").innerHTML=html;
-});
-}
-
-function confirmDeleteMission(id){
-showPopup("آیا مطمئنی میخوای این ماموریت حذف بشه؟", ()=>{
-deleteMission(id);
-});
-}
-
-function deleteMission(id){
-fetch('/admin/delete-mission',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body:JSON.stringify({id})
-}).then(()=>{
-loadMissions();
-showPopup("✅ ماموریت حذف شد");
 });
 }
 
@@ -299,7 +273,7 @@ type:type.value
 })
 }).then(()=>{
 loadMissions();
-showPopup("✅ ماموریت ساخته شد");
+showPopup("✅ ساخته شد");
 });
 }
 
@@ -311,6 +285,17 @@ body:JSON.stringify({
 id,
 status: state ? "active" : "inactive"
 })
+}).then(loadMissions);
+}
+
+function deleteMission(id){
+fetch('/admin/delete-mission',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({id})
+}).then(()=>{
+loadMissions();
+showPopup("🗑 حذف شد");
 });
 }
 
@@ -337,16 +322,10 @@ data.forEach(m=>{
 html+=`
 <div class="msg">
 <div>${m.text}</div>
-<button onclick="confirmDeleteMsg(${m.id})">🗑 حذف</button>
+<button onclick="deleteMsg(${m.id})">🗑 حذف</button>
 </div>`;
 });
 document.getElementById("msgList").innerHTML=html;
-});
-}
-
-function confirmDeleteMsg(id){
-showPopup("آیا پیام حذف شود؟", ()=>{
-deleteMsg(id);
 });
 }
 
@@ -357,13 +336,12 @@ headers:{'Content-Type':'application/json'},
 body:JSON.stringify({id})
 }).then(()=>{
 loadMessages();
-showPopup("🗑 پیام حذف شد");
+showPopup("حذف شد");
 });
 }
 
 /* SEND */
 async function sendMsg(){
-
 let text=document.getElementById("editor").innerHTML;
 let fileInput=document.getElementById("file");
 let filePath=null;
@@ -383,15 +361,15 @@ body:JSON.stringify({
 text,
 file:filePath,
 button:{
-text:document.getElementById("btnText").value,
-url:document.getElementById("btnLink").value
+text:btnText.value,
+url:btnLink.value
 },
-schedule:document.getElementById("schedule").value
+schedule:schedule.value
 })
 });
 
 loadMessages();
-showPopup("📩 پیام ارسال شد");
+showPopup("📩 ارسال شد");
 }
 
 /* PREVIEW */
@@ -399,6 +377,16 @@ setInterval(()=>{
 document.getElementById("preview").innerHTML=
 document.getElementById("editor").innerHTML;
 },500);
+
+/* POPUP */
+function showPopup(msg){
+document.getElementById("popupText").innerText=msg;
+document.getElementById("popup").style.display="block";
+}
+
+function closePopup(){
+document.getElementById("popup").style.display="none";
+}
 
 /* INIT */
 show('missions');
