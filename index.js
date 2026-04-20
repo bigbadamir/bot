@@ -18,8 +18,11 @@ const BASE_URL = process.env.BASE_URL || 'https://bot-0o2j.onrender.com';
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'db.json');
 const DB_BACKUP_FILE = process.env.DB_BACKUP_FILE || path.join(__dirname, 'db.backup.json');
 
-const MIN_SECONDS_BEFORE_CLAIM = Number(process.env.MIN_SECONDS_BEFORE_CLAIM || 2);
-const START_EXPIRE_HOURS = Number(process.env.START_EXPIRE_HOURS || 24);
+/*
+  قوانین ضدتقلب
+*/
+const MIN_SECONDS_BEFORE_CLAIM = Number(process.env.MIN_SECONDS_BEFORE_CLAIM || 8);
+const START_EXPIRE_MINUTES = Number(process.env.START_EXPIRE_MINUTES || 30);
 
 /* =========================================================
    2) TOKENS / CLIENTS
@@ -119,19 +122,18 @@ function normalizeMission(raw) {
 function normalizeUser(raw) {
   const user = raw && typeof raw === 'object' ? raw : {};
 
-  let started = {};
-  if (Array.isArray(user.started)) {
-    for (const mid of user.started) {
-      started[String(mid)] = { at: Date.now(), via: 'legacy' };
-    }
-  } else if (user.started && typeof user.started === 'object') {
-    for (const [mid, info] of Object.entries(user.started)) {
-      if (typeof info === 'number') {
-        started[String(mid)] = { at: Number(info), via: 'legacy-number' };
-      } else if (info && typeof info === 'object') {
-        started[String(mid)] = {
-          at: Number(info.at || 0),
-          via: String(info.via || '')
+  const completed = Array.isArray(user.completed)
+    ? user.completed.map(String)
+    : [];
+
+  let pendingStarts = {};
+  if (user.pendingStarts && typeof user.pendingStarts === 'object') {
+    for (const [mid, val] of Object.entries(user.pendingStarts)) {
+      if (val && typeof val === 'object') {
+        pendingStarts[String(mid)] = {
+          issuedAt: Number(val.issuedAt || 0),
+          startedAt: Number(val.startedAt || 0),
+          nonce: String(val.nonce || '')
         };
       }
     }
@@ -139,8 +141,8 @@ function normalizeUser(raw) {
 
   return {
     points: Number(user.points || 0),
-    completed: Array.isArray(user.completed) ? user.completed.map(String) : [],
-    started
+    completed,
+    pendingStarts
   };
 }
 
@@ -261,6 +263,22 @@ async function sendMessage(platform, chatId, text, options = {}) {
 /* =========================================================
    5) MISSION BUSINESS LOGIC
 ========================================================= */
+function issueMissionSessions(db, platform, userId, missions) {
+  const user = ensureUser(db, platform, userId);
+  const now = Date.now();
+
+  for (const mission of missions) {
+    const mid = String(mission.id);
+    user.pendingStarts[mid] = {
+      issuedAt: now,
+      startedAt: 0,
+      nonce: crypto.randomBytes(12).toString('hex')
+    };
+  }
+
+  saveDB(db);
+}
+
 function getVisibleMissionsForUser(db, platform, userId) {
   const user = ensureUser(db, platform, userId);
 
@@ -270,7 +288,7 @@ function getVisibleMissionsForUser(db, platform, userId) {
   );
 }
 
-function recordMissionStart(db, platform, userId, missionId) {
+function recordMissionStart(db, platform, userId, missionId, nonce) {
   const user = ensureUser(db, platform, userId);
   const mission = findMissionById(db, missionId);
 
@@ -278,11 +296,16 @@ function recordMissionStart(db, platform, userId, missionId) {
     return { ok: false, message: '❌ ماموریت پیدا نشد' };
   }
 
-  user.started[String(missionId)] = {
-    at: Date.now(),
-    via: 'redirect-start'
-  };
+  const session = user.pendingStarts[String(missionId)];
+  if (!session) {
+    return { ok: false, message: '❌ جلسه شروع برای این ماموریت وجود ندارد' };
+  }
 
+  if (String(session.nonce) !== String(nonce)) {
+    return { ok: false, message: '❌ لینک شروع نامعتبر است' };
+  }
+
+  session.startedAt = Date.now();
   saveDB(db);
 
   return { ok: true, mission };
@@ -306,18 +329,25 @@ function claimMission(db, platform, userId, missionId) {
     };
   }
 
-  const startInfo = user.started[String(missionId)];
-  if (!startInfo || !startInfo.at) {
+  const session = user.pendingStarts[String(missionId)];
+  if (!session) {
     return {
       ok: false,
-      message: '⛔ اول باید روی شروع بزنی و لینک مأموریت باز شود'
+      message: '⛔ اول باید روی شروع بزنی'
+    };
+  }
+
+  if (!session.startedAt) {
+    return {
+      ok: false,
+      message: '⛔ هنوز روی شروع نزدی'
     };
   }
 
   const now = Date.now();
-  const ageMs = now - Number(startInfo.at || 0);
+  const ageMs = now - Number(session.startedAt || 0);
   const minMs = MIN_SECONDS_BEFORE_CLAIM * 1000;
-  const maxMs = START_EXPIRE_HOURS * 60 * 60 * 1000;
+  const maxMs = START_EXPIRE_MINUTES * 60 * 1000;
 
   if (ageMs < minMs) {
     const remain = Math.ceil((minMs - ageMs) / 1000);
@@ -328,7 +358,7 @@ function claimMission(db, platform, userId, missionId) {
   }
 
   if (ageMs > maxMs) {
-    delete user.started[String(missionId)];
+    delete user.pendingStarts[String(missionId)];
     saveDB(db);
     return {
       ok: false,
@@ -338,7 +368,7 @@ function claimMission(db, platform, userId, missionId) {
 
   user.points += Number(mission.points || 0);
   user.completed.push(String(missionId));
-  delete user.started[String(missionId)];
+  delete user.pendingStarts[String(missionId)];
 
   saveDB(db);
 
@@ -365,7 +395,14 @@ async function sendDailyMissions(platform, userId) {
     return sendMessage(platform, userId, '⏳ ماموریتی نداری');
   }
 
+  issueMissionSessions(db, platform, userId, missions);
+  const freshDb = loadDB();
+  const user = ensureUser(freshDb, platform, userId);
+
   for (const mission of missions) {
+    const session = user.pendingStarts[String(mission.id)];
+    const nonce = session?.nonce || '';
+
     await sendMessage(
       platform,
       userId,
@@ -377,7 +414,7 @@ ${mission.desc}
           inline_keyboard: [[
             {
               text: '▶️ شروع',
-              url: `${BASE_URL}/start/${platform}/${userId}/${mission.id}`
+              url: `${BASE_URL}/start/${platform}/${userId}/${mission.id}/${nonce}`
             },
             {
               text: '🚀 انجام دادم',
@@ -524,12 +561,13 @@ pollBale();
 /* =========================================================
    11) START ROUTE
 ========================================================= */
-app.get('/start/:platform/:userId/:missionId', (req, res) => {
+app.get('/start/:platform/:userId/:missionId/:nonce', (req, res) => {
   try {
-    const { platform, userId, missionId } = req.params;
+    const { platform, userId, missionId, nonce } = req.params;
     const db = loadDB();
 
-    const result = recordMissionStart(db, platform, String(userId), String(missionId));
+    const result = recordMissionStart(db, platform, String(userId), String(missionId), String(nonce));
+
     if (!result.ok) {
       return res.status(404).send(result.message);
     }
