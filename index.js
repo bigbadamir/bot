@@ -1,13 +1,11 @@
 const express = require('express');
 const fs = require('fs');
-const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
+const axios = require('axios');
 
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
-
-const BASE_URL = "https://bot-0o2j.onrender.com";
 
 /* =========================
    TOKENS
@@ -15,7 +13,24 @@ const BASE_URL = "https://bot-0o2j.onrender.com";
 const TELEGRAM_TOKEN = "8685728009:AAED7KxyD0bvKgZr6XxTXJOycBFsHtdY0Ic";
 const BALE_TOKEN = "1579243381:t714UwiXVQCQDE8z2MKNuMq7Ya6K31wPggk";
 
+/* =========================
+   BASE
+========================= */
+const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
+
+/* =========================
+   BOT INSTANCES
+========================= */
 const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+
+const baleBot = {
+  async sendMessage(chat_id, text, options = {}) {
+    return axios.post(`${BALE_API}/sendMessage`, { chat_id, text, ...options });
+  },
+  async getUpdates(offset) {
+    return axios.post(`${BALE_API}/getUpdates`, { offset }).then(r => r.data.result);
+  }
+};
 
 /* =========================
    DB
@@ -24,8 +39,7 @@ const DB_FILE = './db.json';
 
 function loadDB(){
   try{
-    let raw = fs.readFileSync(DB_FILE,'utf8');
-    let db = JSON.parse(raw);
+    let db = JSON.parse(fs.readFileSync(DB_FILE,'utf8'));
 
     db.users = db.users || {telegram:{},bale:{}};
     db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
@@ -44,15 +58,8 @@ function saveDB(db){
 
 function initUser(db,p,id){
   if(!db.users[p][id]){
-    db.users[p][id]={points:0,started:[],completed:[]};
+    db.users[p][id] = {points:0,started:[],completed:[]};
   }
-}
-
-/* =========================
-   SEND
-========================= */
-async function send(p,id,text,options={}){
-  return telegramBot.sendMessage(id,text,options);
 }
 
 /* =========================
@@ -85,12 +92,24 @@ function buildMenu(){
 }
 
 /* =========================
-   HANDLER
+   SEND WRAPPER
+========================= */
+async function send(p,id,text,options={}){
+  if(p==="telegram"){
+    return telegramBot.sendMessage(id,text,options);
+  }else{
+    return baleBot.sendMessage(id,text,options);
+  }
+}
+
+/* =========================
+   HANDLE
 ========================= */
 async function handle(p,id,text){
 
   let db = loadDB();
   initUser(db,p,id);
+
   let user = db.users[p][id];
 
   if(text==="/start"){
@@ -101,7 +120,7 @@ async function handle(p,id,text){
   }
 
   if(text==="👤 پروفایل شما"){
-    return send(p,id,`💰 امتیاز: ${user.points}`);
+    return send(p,id,`💰 امتیاز شما: ${user.points}`);
   }
 
   if(text==="🎯 ماموریت روزانه"){
@@ -122,8 +141,8 @@ ${m.desc}
 🪙 ${m.points}`,{
         reply_markup:{
           inline_keyboard:[[
-            { text:"🚀 شروع", url:m.link },
-            { text:"✅ انجام دادم", callback_data:`claim_${p}_${id}_${m.id}` }
+            { text:"🚀 انجام دادم", callback_data:`claim_${p}_${id}_${m.id}` },
+            { text:"▶️ شروع", url:m.link }
           ]]
         }
       });
@@ -149,7 +168,7 @@ ${m.desc}
 }
 
 /* =========================
-   MESSAGE
+   TELEGRAM
 ========================= */
 telegramBot.on('message',msg=>{
   if(!msg.text) return;
@@ -157,18 +176,39 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   CALLBACK (ONLY HERE)
+   BALE POLLING
+========================= */
+let offset=0;
+
+async function listenBale(){
+  try{
+    let updates = await baleBot.getUpdates(offset);
+
+    for(let u of updates){
+      offset = u.update_id+1;
+      if(!u.message) continue;
+
+      handle("bale",u.message.chat.id,u.message.text);
+    }
+  }catch(e){}
+
+  setTimeout(listenBale,1000);
+}
+listenBale();
+
+/* =========================
+   CALLBACK (SHARED LOGIC)
 ========================= */
 telegramBot.on('callback_query', async query => {
 
-  if(!query.data || !query.data.startsWith("claim_")) return;
+  if(!query.data.startsWith("claim_")) return;
 
   const [,p,id,mid] = query.data.split("_");
 
   let db = loadDB();
   initUser(db,p,id);
-  let user = db.users[p][id];
 
+  let user = db.users[p][id];
   let mission = db.missionsList.find(m=>String(m.id)===String(mid));
 
   if(!mission){
@@ -176,7 +216,10 @@ telegramBot.on('callback_query', async query => {
   }
 
   if(user.completed.includes(String(mid))){
-    return telegramBot.answerCallbackQuery(query.id,{text:"❌ قبلاً انجام شده"});
+    return telegramBot.answerCallbackQuery(query.id,{
+      text:"⚠️ قبلاً انجام شده",
+      show_alert:true
+    });
   }
 
   user.points += Number(mission.points);
@@ -184,13 +227,16 @@ telegramBot.on('callback_query', async query => {
 
   saveDB(db);
 
-  telegramBot.answerCallbackQuery(query.id,{text:"🎉 موفق شدی"});
+  telegramBot.answerCallbackQuery(query.id,{
+    text:"🎉 موفق شد!",
+    show_alert:true
+  });
 
   telegramBot.sendMessage(id,
-`🎉 ماموریت کامل شد
+`🎉 ماموریت انجام شد
 
-+${mission.points}
-💰 امتیاز: ${user.points}`);
+➕ +${mission.points}
+💰 مجموع: ${user.points}`);
 });
 
 /* =========================
