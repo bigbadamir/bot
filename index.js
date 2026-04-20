@@ -7,35 +7,20 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-/* =========================
-   TOKENS
-========================= */
 const TELEGRAM_TOKEN = "8685728009:AAED7KxyD0bvKgZr6XxTXJOycBFsHtdY0Ic";
-const BALE_TOKEN = "1579243381:t714UwiXVQCQDE8z2MKNuMq7Ya6K31wPggk";
-
 const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
-
-const baleBot = {
-  async sendMessage(chat_id, text, options = {}) {
-    return axios.post(`${BALE_API}/sendMessage`, { chat_id, text, ...options });
-  },
-  async getUpdates(offset) {
-    return axios.post(`${BALE_API}/getUpdates`, { offset }).then(r => r.data.result);
-  }
-};
-
 /* =========================
-   DB SAFE (FIXED)
+   DB SAFE CORE (NO CRASH EVER)
 ========================= */
 const DB_FILE = './db.json';
 
 function loadDB(){
   try{
-    let db = JSON.parse(fs.readFileSync(DB_FILE,'utf8'));
+    const raw = fs.readFileSync(DB_FILE,'utf8');
+    let db = JSON.parse(raw);
 
-    if(!db || typeof db !== "object") throw "bad db";
+    if(!db || typeof db !== "object") throw "bad";
 
     db.users = db.users || {telegram:{},bale:{}};
     db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
@@ -43,11 +28,10 @@ function loadDB(){
     return db;
 
   }catch(e){
-    let fresh = {
+    const fresh = {
       users:{telegram:{},bale:{}},
       missionsList:[]
     };
-
     fs.writeFileSync(DB_FILE, JSON.stringify(fresh,null,2));
     return fresh;
   }
@@ -58,16 +42,10 @@ function saveDB(db){
 }
 
 function initUser(db,p,id){
+  if(!db.users[p]) db.users[p]={};
   if(!db.users[p][id]){
-    db.users[p][id] = {points:0,started:[],completed:[]};
+    db.users[p][id]={points:0,started:[],completed:[]};
   }
-}
-
-/* =========================
-   SEND
-========================= */
-async function send(p,id,text,options={}){
-  return telegramBot.sendMessage(id,text,options);
 }
 
 /* =========================
@@ -100,13 +78,20 @@ function buildMenu(){
 }
 
 /* =========================
+   SAFE SEND
+========================= */
+async function send(p,id,text,options={}){
+  return telegramBot.sendMessage(id,text,options);
+}
+
+/* =========================
    HANDLE
 ========================= */
 async function handle(p,id,text){
 
-  let db = loadDB();
+  const db = loadDB();
   initUser(db,p,id);
-  let user = db.users[p][id];
+  const user = db.users[p][id];
 
   if(text==="/start"){
     saveDB(db);
@@ -116,17 +101,17 @@ async function handle(p,id,text){
   }
 
   if(text==="👤 پروفایل شما"){
-    return send(p,id,`💰 امتیاز شما: ${user.points}`);
+    return send(p,id,`💰 امتیاز: ${user.points}`);
   }
 
   if(text==="🎯 ماموریت روزانه"){
 
-    let active = db.missionsList.filter(m =>
+    const active = db.missionsList.filter(m =>
       m.status==="active" &&
       !user.completed.includes(String(m.id))
     );
 
-    if(active.length===0){
+    if(!active.length){
       return send(p,id,"⏳ ماموریتی نداری");
     }
 
@@ -137,8 +122,8 @@ ${m.desc}
 🪙 ${m.points}`,{
         reply_markup:{
           inline_keyboard:[[
-            { text:"🚀 انجام دادم", callback_data:`claim_${p}_${id}_${m.id}` },
-            { text:"▶️ شروع", url:m.link }
+            {text:"🚀 انجام دادم", callback_data:`claim_${p}_${id}_${m.id}`},
+            {text:"▶️ شروع", url:m.link}
           ]]
         }
       });
@@ -172,40 +157,31 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   BALE
+   ADMIN - MISSIONS (FIXED + SAFE JSON ALWAYS)
 ========================= */
-let offset=0;
-
-async function listenBale(){
+app.get('/admin/missions',(req,res)=>{
   try{
-    let updates = await baleBot.getUpdates(offset);
-
-    for(let u of updates){
-      offset = u.update_id+1;
-      if(!u.message) continue;
-
-      handle("bale",u.message.chat.id,u.message.text);
-    }
-  }catch(e){}
-
-  setTimeout(listenBale,1000);
-}
-listenBale();
+    const db = loadDB();
+    return res.json(db.missionsList || []);
+  }catch(e){
+    return res.json([]);
+  }
+});
 
 /* =========================
-   ADMIN - ADD MISSION (FIXED VALIDATION)
+   ADD MISSION
 ========================= */
 app.post('/admin/add-mission',(req,res)=>{
 
-  let db = loadDB();
+  const db = loadDB();
 
-  let title = (req.body.title || "").trim();
-  let desc = (req.body.desc || "").trim();
-  let link = (req.body.link || "").trim();
-  let points = Number(req.body.points || 0);
+  const title = (req.body.title||"").trim();
+  const desc = (req.body.desc||"").trim();
+  const link = (req.body.link||"").trim();
+  const points = Number(req.body.points||0);
 
   if(!title || !link){
-    return res.json({ok:false,error:"invalid data"});
+    return res.json({ok:false,error:"invalid"});
   }
 
   db.missionsList.push({
@@ -223,18 +199,10 @@ app.post('/admin/add-mission',(req,res)=>{
 });
 
 /* =========================
-   ADMIN - LIST MISSIONS (FIXED)
-========================= */
-app.get('/admin/missions',(req,res)=>{
-  let db = loadDB();
-  res.json(db.missionsList);
-});
-
-/* =========================
-   DELETE MISSION
+   DELETE
 ========================= */
 app.post('/admin/delete-mission',(req,res)=>{
-  let db = loadDB();
+  const db = loadDB();
 
   db.missionsList = db.missionsList.filter(
     m => String(m.id) !== String(req.body.id)
@@ -249,9 +217,9 @@ app.post('/admin/delete-mission',(req,res)=>{
    TOGGLE
 ========================= */
 app.post('/admin/mission/toggle',(req,res)=>{
-  let db = loadDB();
+  const db = loadDB();
 
-  let m = db.missionsList.find(x=>String(x.id)===String(req.body.id));
+  const m = db.missionsList.find(x=>String(x.id)===String(req.body.id));
   if(!m) return res.json({ok:false});
 
   m.status = req.body.status;
@@ -265,14 +233,15 @@ app.post('/admin/mission/toggle',(req,res)=>{
    CLAIM
 ========================= */
 app.get('/claim/:p/:id/:mid',(req,res)=>{
-  let db = loadDB();
 
-  let {p,id,mid} = req.params;
+  const db = loadDB();
+
+  const {p,id,mid} = req.params;
 
   initUser(db,p,id);
-  let user = db.users[p][id];
+  const user = db.users[p][id];
 
-  let mission = db.missionsList.find(m=>String(m.id)===String(mid));
+  const mission = db.missionsList.find(m=>String(m.id)===String(mid));
 
   if(!mission) return res.send("❌");
 
@@ -293,5 +262,4 @@ app.get('/claim/:p/:id/:mid',(req,res)=>{
    SERVER
 ========================= */
 app.listen(3000,()=>console.log("RUNNING"));
-
 app.get("/",(req,res)=>res.send("OK"));
