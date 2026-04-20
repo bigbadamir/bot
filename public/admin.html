@@ -35,6 +35,7 @@ background:#1e293b;color:white;border:none;border-radius:10px;
 button{
 padding:10px 15px;background:#3b82f6;
 border:none;border-radius:10px;color:white;margin:5px;
+cursor:pointer;
 }
 
 .mission,.msg{
@@ -85,7 +86,6 @@ padding:8px 10px;
 margin:3px;
 border-radius:8px;
 color:white;
-cursor:pointer;
 }
 
 #popup{
@@ -231,12 +231,34 @@ document.getElementById("popup").style.display="none";
 if(popupAction){popupAction();popupAction=null;}
 }
 
-/* ✅ FIXED MISSIONS */
+/* =========================
+   MISSIONS (FIXED CORE)
+========================= */
+
 function loadMissions(){
+
+const box=document.getElementById("missionList");
+box.innerHTML="⏳ در حال دریافت...";
+
 fetch('/admin/missions')
-.then(r=>r.json())
+.then(r=>{
+if(!r.ok) throw new Error("HTTP "+r.status);
+return r.json();
+})
 .then(data=>{
+
+if(!Array.isArray(data)){
+box.innerHTML="❌ داده اشتباه از سرور";
+return;
+}
+
+if(data.length===0){
+box.innerHTML="⚠️ هیچ ماموریتی وجود ندارد";
+return;
+}
+
 let html="";
+
 data.forEach(m=>{
 html+=`
 <div class="mission">
@@ -252,12 +274,17 @@ onchange="toggleMission(${m.id},this.checked)">
 <button onclick="deleteMission(${m.id})">🗑 حذف</button>
 </div>`;
 });
-document.getElementById("missionList").innerHTML=html;
+
+box.innerHTML=html;
+})
+.catch(err=>{
+console.error(err);
+box.innerHTML="❌ خطا در دریافت ماموریت‌ها";
 });
 }
 
-/* ✅ FIXED ADD MISSION */
 function addMission(){
+
 fetch('/admin/add-mission',{
 method:'POST',
 headers:{'Content-Type':'application/json'},
@@ -268,10 +295,10 @@ link:document.getElementById("link").value,
 points:document.getElementById("points").value,
 type:document.getElementById("type").value
 })
-}).then(()=>{
-showPopup("✅ ساخته شد");
-loadMissions();
-});
+})
+.then(()=>loadMissions())
+.then(()=>showPopup("✅ ماموریت ساخته شد"))
+.catch(()=>showPopup("❌ خطا"));
 }
 
 function deleteMission(id){
@@ -279,9 +306,7 @@ fetch('/admin/delete-mission',{
 method:'POST',
 headers:{'Content-Type':'application/json'},
 body:JSON.stringify({id})
-}).then(()=>{
-loadMissions();
-});
+}).then(()=>loadMissions());
 }
 
 function toggleMission(id,state){

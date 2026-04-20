@@ -324,6 +324,59 @@ app.post('/admin/add-mission',(req,res)=>{
 
 const PORT = process.env.PORT || 3000;
 
+/* =========================
+   ADMIN - MISSIONS LIST (FIX)
+========================= */
+
+app.get('/admin/missions', (req, res) => {
+  let db = loadDB();
+
+  if (!db.missionsList) {
+    db.missionsList = [];
+    saveDB(db);
+  }
+
+  res.json(db.missionsList);
+});
+
+/* =========================
+   DELETE MISSION
+========================= */
+
+app.post('/admin/delete-mission', (req, res) => {
+  let db = loadDB();
+
+  db.missionsList = db.missionsList.filter(
+    m => String(m.id) !== String(req.body.id)
+  );
+
+  saveDB(db);
+
+  res.json({ ok: true });
+});
+
+/* =========================
+   TOGGLE MISSION (FIX MATCH WITH PANEL)
+========================= */
+
+app.post('/admin/mission/toggle', (req, res) => {
+  let db = loadDB();
+
+  let mission = db.missionsList.find(
+    m => String(m.id) === String(req.body.id)
+  );
+
+  if (!mission) {
+    return res.json({ ok: false, error: "mission not found" });
+  }
+
+  mission.status = req.body.status;
+
+  saveDB(db);
+
+  res.json({ ok: true });
+});
+
 app.listen(PORT, () => {
   console.log("RUNNING ON PORT", PORT);
 });
