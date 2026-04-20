@@ -37,7 +37,7 @@ const baleBot = {
 };
 
 /* =========================
-   DB SAFE CORE
+   DB
 ========================= */
 const DB_FILE = './db.json';
 
@@ -146,6 +146,7 @@ ${m.desc}
 🪙 ${m.points}`,{
         reply_markup:{
           inline_keyboard:[[
+            // 🔥 SWAPPED BACK (as requested)
             {text:"▶️ شروع", url:m.link},
             {text:"🚀 انجام دادم", callback_data:`claim_${p}_${id}_${m.id}`}
           ]]
@@ -181,7 +182,7 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   CALLBACK (FIXED CORE LOGIC)
+   CALLBACK (UNCHANGED LOGIC)
 ========================= */
 telegramBot.on('callback_query', async q => {
 
@@ -203,15 +204,13 @@ telegramBot.on('callback_query', async q => {
     });
   }
 
-  // ❌ مهم: فقط برای همین کاربر چک می‌شود
   if(user.completed.includes(String(mid))){
     return telegramBot.answerCallbackQuery(q.id,{
-      text:"⚠️ قبلاً این ماموریت را انجام دادی",
+      text:"⚠️ قبلاً انجام شده",
       show_alert:true
     });
   }
 
-  // ✅ ثبت فقط برای کاربر (NOT GLOBAL DELETE)
   user.points += Number(mission.points || 0);
   user.completed.push(String(mid));
 
@@ -223,14 +222,14 @@ telegramBot.on('callback_query', async q => {
   });
 
   telegramBot.sendMessage(id,
-`🎉 ماموریت با موفقیت انجام شد
+`🎉 ماموریت انجام شد
 
 ➕ +${mission.points}
-💰 مجموع امتیاز: ${user.points}`);
+💰 مجموع: ${user.points}`);
 });
 
 /* =========================
-   BALE LOOP
+   BALE
 ========================= */
 let offset = 0;
 
@@ -251,7 +250,7 @@ async function listenBale(){
 listenBale();
 
 /* =========================
-   ADMIN (NO DELETE ON CLAIM EVER)
+   ADMIN (UNCHANGED)
 ========================= */
 app.get('/admin/missions',(req,res)=>{
   const db = loadDB();
