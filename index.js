@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
@@ -10,7 +11,14 @@ app.use(express.static('public'));
 /* =========================
    CONFIG
 ========================= */
-const BASE_URL = "https://bot-0o2j.onrender.com";
+const BASE_URL = process.env.BASE_URL || "https://bot-0o2j.onrender.com";
+
+/*
+  برای ماندگاری روی Render اگر Persistent Disk داری:
+  DB_FILE=/var/data/db.json
+  یا هر مسیری که روی دیسک mount کرده‌ای
+*/
+const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'db.json');
 
 /* =========================
    TOKENS
@@ -50,8 +58,6 @@ const baleBot = {
 /* =========================
    DB SAFE
 ========================= */
-const DB_FILE = './db.json';
-
 function getFreshDB() {
   return {
     users: { telegram: {}, bale: {} },
@@ -60,18 +66,27 @@ function getFreshDB() {
   };
 }
 
+function ensureDbFile() {
+  const dir = path.dirname(DB_FILE);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify(getFreshDB(), null, 2), 'utf8');
+  }
+}
+
 function loadDB() {
   try {
-    if (!fs.existsSync(DB_FILE)) {
-      const fresh = getFreshDB();
-      fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
-      return fresh;
-    }
+    ensureDbFile();
 
     const raw = fs.readFileSync(DB_FILE, 'utf8');
     const db = JSON.parse(raw);
 
-    if (!db || typeof db !== 'object') throw new Error('bad db');
+    if (!db || typeof db !== 'object') {
+      throw new Error('bad db');
+    }
 
     db.users = db.users || { telegram: {}, bale: {} };
     db.users.telegram = db.users.telegram || {};
@@ -83,14 +98,16 @@ function loadDB() {
   } catch (e) {
     const fresh = getFreshDB();
     try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
+      ensureDbFile();
+      fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2), 'utf8');
     } catch (_) {}
     return fresh;
   }
 }
 
 function saveDB(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  ensureDbFile();
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
 }
 
 function initUser(db, p, id) {
@@ -128,7 +145,7 @@ const BUTTONS = {
 function buildMenu() {
   const keys = Object.keys(BUTTONS);
 
-  let kb = [
+  const kb = [
     ["🎯 ماموریت روزانه"],
     ["👤 پروفایل شما"]
   ];
@@ -151,13 +168,28 @@ async function send(p, id, text, options = {}) {
 }
 
 /* =========================
-   CLAIM LOGIC
+   HELPERS
 ========================= */
+function findMission(db, mid) {
+  return db.missionsList.find(m => String(m.id) === String(mid));
+}
+
+function recordStart(db, p, id, mid) {
+  initUser(db, p, id);
+  const user = db.users[p][id];
+
+  if (!user.started.includes(String(mid))) {
+    user.started.push(String(mid));
+  }
+
+  saveDB(db);
+}
+
 function claimMission(db, p, id, mid) {
   initUser(db, p, id);
 
   const user = db.users[p][id];
-  const mission = db.missionsList.find(m => String(m.id) === String(mid));
+  const mission = findMission(db, mid);
 
   if (!mission) {
     return { ok: false, message: "❌ ماموریت وجود ندارد" };
@@ -349,24 +381,19 @@ app.get('/start/:p/:id/:mid', (req, res) => {
 
     initUser(db, p, String(id));
 
-    const user = db.users[p][String(id)];
-    const mission = db.missionsList.find(m => String(m.id) === String(mid));
+    const mission = findMission(db, String(mid));
 
     if (!mission) {
       return res.status(404).send("Mission not found");
     }
 
-    if (!user.started.includes(String(mid))) {
-      user.started.push(String(mid));
-      saveDB(db);
-    }
-
-    // دقیقا همان لینک ذخیره‌شده در پنل
     const realMissionLink = String(mission.link || "").trim();
 
     if (!realMissionLink) {
       return res.status(400).send("Mission link not found");
     }
+
+    recordStart(db, p, String(id), String(mid));
 
     return res.redirect(realMissionLink);
   } catch (e) {
