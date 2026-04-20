@@ -304,41 +304,71 @@ app.get('/claim/:p/:id/:mid',(req,res)=>{
 });
 
 /* =========================
-   ADMIN
+   ADMIN - ADD MISSION
 ========================= */
 app.post('/admin/add-mission',(req,res)=>{
-  let db=loadDB();
-
-  db.missionsList.push({
-    id:Date.now(),
-    title:req.body.title,
-    desc:req.body.desc,
-    points:req.body.points,
-    link:req.body.link,
-    status:"inactive"
-  });
-
-  saveDB(db);
-  res.json({ok:true});
-});
-
-const PORT = process.env.PORT || 3000;
-
-/* =========================
-   ADMIN - MISSIONS LIST (FIX)
-========================= */
-
-app.get('/admin/missions', (req, res) => {
   let db = loadDB();
 
-  if (!db.missionsList) {
-    db.missionsList = [];
-    saveDB(db);
-  }
+  const mission = {
+    id: Date.now(),
+    title: req.body.title || "",
+    desc: req.body.desc || "",
+    points: Number(req.body.points || 0),
+    link: req.body.link || "",
+    type: req.body.type || "main",
+    status: "inactive"
+  };
 
-  res.json(db.missionsList);
+  db.missionsList.push(mission);
+
+  saveDB(db);
+
+  res.json({ ok: true, mission });
 });
 
+/* =========================
+   ADMIN - GET MISSIONS
+========================= */
+app.get('/admin/missions', (req, res) => {
+  let db = loadDB();
+  res.json(db.missionsList || []);
+});
+
+/* =========================
+   ADMIN - DELETE
+========================= */
+app.post('/admin/delete-mission',(req,res)=>{
+  let db = loadDB();
+
+  db.missionsList = db.missionsList.filter(
+    m => String(m.id) !== String(req.body.id)
+  );
+
+  saveDB(db);
+
+  res.json({ ok: true });
+});
+
+/* =========================
+   ADMIN - TOGGLE (ONLY ONE VERSION)
+========================= */
+app.post('/admin/mission/toggle',(req,res)=>{
+  let db = loadDB();
+
+  let mission = db.missionsList.find(
+    m => String(m.id) === String(req.body.id)
+  );
+
+  if(!mission){
+    return res.json({ ok:false, error:"not found" });
+  }
+
+  mission.status = req.body.status;
+
+  saveDB(db);
+
+  res.json({ ok:true, status: mission.status });
+});
 /* =========================
    DELETE MISSION
 ========================= */
