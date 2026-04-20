@@ -12,9 +12,10 @@ app.use(express.static('public'));
 ========================= */
 const BASE_URL = "https://bot-0o2j.onrender.com";
 
-/* 🔥 TELEGRAM TOKEN (طبق خواسته تو)
+/* =========================
+   TOKENS
 ========================= */
-const TELEGRAM_TOKEN = "8685728009:AAEXAMPLE_REPLACED_SAFE";
+const TELEGRAM_TOKEN = "8685728009:AAED7KxyD0bvKgZr6XxTXJOycBFsHtdY0Ic";
 const BALE_TOKEN = "1579243381:t714UwiXVQCQDE8z2MKNuMq7Ya6K31wPggk";
 
 const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
@@ -22,7 +23,7 @@ const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
-   BALE
+   BALE API
 ========================= */
 const baleBot = {
   async sendMessage(chat_id, text, options = {}) {
@@ -46,10 +47,11 @@ function loadDB(){
 
     if(!db.users) db.users={telegram:{},bale:{}};
     if(!db.missionsList) db.missionsList=[];
-    return db;
+    if(!db.messages) db.messages=[];
 
+    return db;
   }catch(e){
-    return { users:{telegram:{},bale:{}}, missionsList:[] };
+    return { users:{telegram:{},bale:{}}, missionsList:[], messages:[] };
   }
 }
 
@@ -58,7 +60,7 @@ function saveDB(db){
 }
 
 /* =========================
-   USERS
+   INIT USER
 ========================= */
 function initUser(db,p,id){
   if(!db.users[p][id]){
@@ -80,29 +82,46 @@ async function send(p,id,text,options={}){
 }
 
 /* =========================
-   MENU (بدون حذف فیچرها)
+   BUTTONS (بدون حذف)
 ========================= */
 const BUTTONS = {
 "🚀 بازکردن برنامه":"https://click.adtrace.io/u2p3usf",
+"🔄 بروزرسانی":"https://click.adtrace.io/zc7cgls",
+"💡 قبض":"https://click.adtrace.io/uzwe0u4",
 "💳 کارت به کارت":"https://click.adtrace.io/lhntx66",
+"❤️ نیکوکاری":"https://click.adtrace.io/5yb7mok",
+"📶 بسته اینترنتی":"https://click.adtrace.io/4pepzq6",
+"📱 شارژ":"https://click.adtrace.io/51ee6bd",
+"👥 دعوت از دوستان":"https://click.adtrace.io/px12hz6",
+"🌍 گردشگری":"https://click.adtrace.io/rer2tvj",
+"🚗 خدمات خودرو":"https://click.adtrace.io/wmz46ex",
+"🎫 بلیت و گردشگری":"https://click.adtrace.io/yvhn9xo",
 "💰 خدمات مالی":"https://click.adtrace.io/l3062zv"
 };
 
+/* =========================
+   MENU
+========================= */
 function buildMenu(){
-  return [
+  const keys = Object.keys(BUTTONS);
+
+  let keyboard=[
     ["🎯 ماموریت روزانه"],
-    ["👤 پروفایل شما"],
-    ...Object.keys(BUTTONS).reduce((acc,k,i)=>{
-      if(i%2===0) acc.push(Object.keys(BUTTONS).slice(i,i+2));
-      return acc;
-    },[])
+    ["👤 پروفایل شما"]
   ];
+
+  for(let i=0;i<keys.length;i+=2){
+    keyboard.push(keys.slice(i,i+2));
+  }
+
+  return keyboard;
 }
 
 /* =========================
    BOT HANDLER
 ========================= */
 async function handle(p,id,text){
+
   let db=loadDB();
   initUser(db,p,id);
 
@@ -120,7 +139,7 @@ async function handle(p,id,text){
   }
 
   /* =========================
-     MISSIONS
+     🎯 MISSIONS (FIXED LINK)
   ========================= */
   if(text==="🎯 ماموریت روزانه"){
 
@@ -142,7 +161,7 @@ ${m.desc}
           inline_keyboard:[[
             {
               text:"🚀 شروع",
-              url:`${BASE_URL}/start/${p}/${id}/${m.id}`
+              url: m.link   // ✅ مهم‌ترین اصلاح همینجاست
             },
             {
               text:"✅ انجام دادم",
@@ -156,6 +175,9 @@ ${m.desc}
     return;
   }
 
+  /* =========================
+     OTHER BUTTONS
+  ========================= */
   if(BUTTONS[text]){
     return send(p,id,"👇 ورود",{
       reply_markup:{
@@ -180,7 +202,7 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   START (ثبت شروع واقعی)
+   START
 ========================= */
 app.get('/start/:p/:id/:mid',(req,res)=>{
   let db=loadDB();
@@ -194,11 +216,11 @@ app.get('/start/:p/:id/:mid',(req,res)=>{
     saveDB(db);
   }
 
-  res.redirect(BASE_URL);
+  res.send("OK");
 });
 
 /* =========================
-   CLAIM (فقط اگر start کرده باشد)
+   CLAIM
 ========================= */
 app.get('/claim/:p/:id/:mid',(req,res)=>{
   let db=loadDB();
@@ -209,15 +231,11 @@ app.get('/claim/:p/:id/:mid',(req,res)=>{
 
   let mission=db.missionsList.find(m=>String(m.id)===String(mid));
 
-  if(!mission) return res.send("❌ ماموریت نیست");
+  if(!mission) return res.send("❌");
 
-  if(user.completed.includes(mid)){
-    return res.send("❌ قبلاً انجام شده");
-  }
+  if(user.completed.includes(mid)) return res.send("❌ تکراری");
 
-  if(!user.started.includes(mid)){
-    return res.send("❌ اول روی شروع بزن");
-  }
+  if(!user.started.includes(mid)) return res.send("❌ اول start");
 
   user.points += Number(mission.points);
   user.completed.push(mid);
@@ -240,7 +258,7 @@ app.post('/admin/add-mission',(req,res)=>{
     title:req.body.title,
     desc:req.body.desc,
     points:Number(req.body.points),
-    link:req.body.link,
+    link:req.body.link,   // ✅ همین لینک استفاده میشه
     status:"inactive"
   });
 
@@ -264,7 +282,7 @@ app.post('/admin/delete-mission',(req,res)=>{
   res.json({ok:true});
 });
 
-app.post('/admin/mission/toggle',async(req,res)=>{
+app.post('/admin/mission/toggle',(req,res)=>{
   let db=loadDB();
 
   let mission=db.missionsList.find(
