@@ -19,7 +19,6 @@ const TELEGRAM_TOKEN = "8685728009:AAED7KxyD0bvKgZr6XxTXJOycBFsHtdY0Ic";
 const BALE_TOKEN = "1579243381:t714UwiXVQCQDE8z2MKNuMq7Ya6K31wPggk";
 
 const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
-
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
@@ -37,21 +36,31 @@ const baleBot = {
 };
 
 /* =========================
-   DB
+   DB (FIXED)
 ========================= */
 const DB_FILE = './db.json';
 
 function loadDB(){
   try{
-    let db = JSON.parse(fs.readFileSync(DB_FILE,'utf8'));
+    let raw = fs.readFileSync(DB_FILE,'utf8');
+    let db = JSON.parse(raw);
 
-    if(!db.users) db.users={telegram:{},bale:{}};
-    if(!db.missionsList) db.missionsList=[];
-    if(!db.messages) db.messages=[];
+    if(typeof db !== "object" || db === null) throw "bad";
+
+    db.users = db.users || {telegram:{},bale:{}};
+    db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
+    db.messages = db.messages || [];
 
     return db;
+
   }catch(e){
-    return { users:{telegram:{},bale:{}}, missionsList:[], messages:[] };
+    let fresh = {
+      users:{telegram:{},bale:{}},
+      missionsList:[],
+      messages:[]
+    };
+    fs.writeFileSync(DB_FILE, JSON.stringify(fresh,null,2));
+    return fresh;
   }
 }
 
@@ -60,7 +69,7 @@ function saveDB(db){
 }
 
 /* =========================
-   INIT USER
+   USER INIT
 ========================= */
 function initUser(db,p,id){
   if(!db.users[p][id]){
@@ -82,7 +91,7 @@ async function send(p,id,text,options={}){
 }
 
 /* =========================
-   BUTTONS (بدون حذف)
+   BUTTONS
 ========================= */
 const BUTTONS = {
 "🚀 بازکردن برنامه":"https://click.adtrace.io/u2p3usf",
@@ -105,7 +114,7 @@ const BUTTONS = {
 function buildMenu(){
   const keys = Object.keys(BUTTONS);
 
-  let keyboard=[
+  let keyboard = [
     ["🎯 ماموریت روزانه"],
     ["👤 پروفایل شما"]
   ];
@@ -122,10 +131,10 @@ function buildMenu(){
 ========================= */
 async function handle(p,id,text){
 
-  let db=loadDB();
+  let db = loadDB();
   initUser(db,p,id);
 
-  let user=db.users[p][id];
+  let user = db.users[p][id];
 
   if(text==="/start"){
     saveDB(db);
@@ -138,12 +147,9 @@ async function handle(p,id,text){
     return send(p,id,`💰 امتیاز: ${user.points}`);
   }
 
-  /* =========================
-     🎯 MISSIONS (FIXED LINK)
-  ========================= */
   if(text==="🎯 ماموریت روزانه"){
 
-    let active=db.missionsList.filter(m=>
+    let active = db.missionsList.filter(m =>
       m.status==="active" &&
       !user.completed.includes(m.id)
     );
@@ -159,14 +165,8 @@ ${m.desc}
 🪙 ${m.points}`,{
         reply_markup:{
           inline_keyboard:[[
-            {
-              text:"🚀 شروع",
-              url: m.link   // ✅ مهم‌ترین اصلاح همینجاست
-            },
-            {
-              text:"✅ انجام دادم",
-              url:`${BASE_URL}/claim/${p}/${id}/${m.id}`
-            }
+            { text:"🚀 شروع", url: m.link },
+            { text:"✅ انجام دادم", url:`${BASE_URL}/claim/${p}/${id}/${m.id}` }
           ]]
         }
       });
@@ -175,15 +175,13 @@ ${m.desc}
     return;
   }
 
-  /* =========================
-     OTHER BUTTONS
-  ========================= */
   if(BUTTONS[text]){
     return send(p,id,"👇 ورود",{
       reply_markup:{
-        inline_keyboard:[[
-          { text:"باز کردن", url:BUTTONS[text] }
-        ]]
+        inline_keyboard:[[{
+          text:"🚀 باز کردن",
+          url:BUTTONS[text]
+        }]]
       }
     });
   }
@@ -202,22 +200,25 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   START
+   BALE
 ========================= */
-app.get('/start/:p/:id/:mid',(req,res)=>{
-  let db=loadDB();
-  let {p,id,mid}=req.params;
+let offset=0;
 
-  initUser(db,p,id);
-  let user=db.users[p][id];
+async function listenBale(){
+  try{
+    let updates = await baleBot.getUpdates(offset);
 
-  if(!user.started.includes(mid)){
-    user.started.push(mid);
-    saveDB(db);
-  }
+    for(let u of updates){
+      offset=u.update_id+1;
+      if(!u.message) continue;
 
-  res.send("OK");
-});
+      handle("bale",u.message.chat.id,u.message.text);
+    }
+  }catch(e){}
+
+  setTimeout(listenBale,1000);
+}
+listenBale();
 
 /* =========================
    CLAIM
@@ -235,8 +236,6 @@ app.get('/claim/:p/:id/:mid',(req,res)=>{
 
   if(user.completed.includes(mid)) return res.send("❌ تکراری");
 
-  if(!user.started.includes(mid)) return res.send("❌ اول start");
-
   user.points += Number(mission.points);
   user.completed.push(mid);
 
@@ -248,29 +247,45 @@ app.get('/claim/:p/:id/:mid',(req,res)=>{
 });
 
 /* =========================
-   ADMIN
+   ADMIN ADD (FIXED)
 ========================= */
 app.post('/admin/add-mission',(req,res)=>{
   let db=loadDB();
 
+  let title = (req.body.title || "").trim();
+  let desc = (req.body.desc || "").trim();
+  let link = (req.body.link || "").trim();
+  let points = Number(req.body.points || 0);
+
+  if(!title || !link){
+    return res.json({ok:false,error:"invalid"});
+  }
+
   db.missionsList.push({
-    id:Date.now(),
-    title:req.body.title,
-    desc:req.body.desc,
-    points:Number(req.body.points),
-    link:req.body.link,   // ✅ همین لینک استفاده میشه
+    id: Date.now(),
+    title,
+    desc,
+    link,
+    points,
     status:"inactive"
   });
 
   saveDB(db);
+
   res.json({ok:true});
 });
 
+/* =========================
+   ADMIN LIST
+========================= */
 app.get('/admin/missions',(req,res)=>{
   let db=loadDB();
   res.json(db.missionsList);
 });
 
+/* =========================
+   DELETE
+========================= */
 app.post('/admin/delete-mission',(req,res)=>{
   let db=loadDB();
 
@@ -279,19 +294,20 @@ app.post('/admin/delete-mission',(req,res)=>{
   );
 
   saveDB(db);
+
   res.json({ok:true});
 });
 
+/* =========================
+   TOGGLE
+========================= */
 app.post('/admin/mission/toggle',(req,res)=>{
   let db=loadDB();
 
-  let mission=db.missionsList.find(
-    m=>String(m.id)===String(req.body.id)
-  );
+  let m=db.missionsList.find(x=>String(x.id)===String(req.body.id));
+  if(!m) return res.json({ok:false});
 
-  if(!mission) return res.json({ok:false});
-
-  mission.status=req.body.status;
+  m.status=req.body.status;
 
   saveDB(db);
 
