@@ -1,24 +1,13 @@
 {
   "users": {
     "telegram": {
-      "1795489870": {
-        "points": 0
-      }
-    },
-    "bale": {
-      "100647878": {
-        "points": 0
-      },
-      "1097168897": {
-        "points": 0
-      },
-      "1223673307": {
-        "points": 0
-      },
-      "1249852081": {
-        "points": 0
-      }
-    }
+     "telegram": {
+  "1795489870": {
+    "points": 0,
+    "started": [],
+    "completed": []
+  }
+}
   },
   "missionsList": [
     {

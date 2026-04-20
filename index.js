@@ -112,12 +112,12 @@ async function send(p,id,text,options={}){
 /* =========================
    SAFE USER
 ========================= */
-function initUser(db,p,id){
+function initUser(db, p, id){
   if(!db.users[p][id]){
-    db.users[p][id]={
-      points:0,
-      started:[],
-      completed:[]
+    db.users[p][id] = {
+      points: 0,
+      started: [],
+      completed: []
     };
   }
 
@@ -127,6 +127,10 @@ function initUser(db,p,id){
 
   if(!Array.isArray(db.users[p][id].completed)){
     db.users[p][id].completed = [];
+  }
+
+  if(typeof db.users[p][id].points !== "number"){
+    db.users[p][id].points = Number(db.users[p][id].points || 0);
   }
 }
 
