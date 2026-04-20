@@ -12,6 +12,7 @@ app.use(express.static('public'));
    CONFIG
 ========================= */
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'db.json');
+const DB_BACKUP_FILE = process.env.DB_BACKUP_FILE || path.join(__dirname, 'db.backup.json');
 
 /* =========================
    TOKENS
@@ -59,47 +60,70 @@ function getFreshDB() {
   };
 }
 
-function ensureDbFile() {
-  const dir = path.dirname(DB_FILE);
+function ensureDirForFile(filePath) {
+  const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(getFreshDB(), null, 2), 'utf8');
+}
+
+function normalizeDB(db) {
+  if (!db || typeof db !== 'object') db = getFreshDB();
+
+  db.users = db.users || { telegram: {}, bale: {} };
+  db.users.telegram = db.users.telegram || {};
+  db.users.bale = db.users.bale || {};
+  db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
+  db.messages = Array.isArray(db.messages) ? db.messages : [];
+
+  return db;
+}
+
+function readJsonFileSafe(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
   }
 }
 
 function loadDB() {
-  try {
-    ensureDbFile();
+  ensureDirForFile(DB_FILE);
+  ensureDirForFile(DB_BACKUP_FILE);
 
-    const raw = fs.readFileSync(DB_FILE, 'utf8');
-    const db = JSON.parse(raw);
+  let db = readJsonFileSafe(DB_FILE);
+  if (db) return normalizeDB(db);
 
-    if (!db || typeof db !== 'object') {
-      throw new Error('bad db');
-    }
-
-    db.users = db.users || { telegram: {}, bale: {} };
-    db.users.telegram = db.users.telegram || {};
-    db.users.bale = db.users.bale || {};
-    db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
-    db.messages = Array.isArray(db.messages) ? db.messages : [];
-
-    return db;
-  } catch (e) {
-    const fresh = getFreshDB();
+  db = readJsonFileSafe(DB_BACKUP_FILE);
+  if (db) {
+    db = normalizeDB(db);
     try {
-      ensureDbFile();
-      fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2), 'utf8');
+      atomicWriteJson(DB_FILE, db);
     } catch (_) {}
-    return fresh;
+    return db;
   }
+
+  const fresh = getFreshDB();
+  try {
+    atomicWriteJson(DB_FILE, fresh);
+    atomicWriteJson(DB_BACKUP_FILE, fresh);
+  } catch (_) {}
+  return fresh;
+}
+
+function atomicWriteJson(filePath, data) {
+  ensureDirForFile(filePath);
+  const tempPath = `${filePath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tempPath, filePath);
 }
 
 function saveDB(db) {
-  ensureDbFile();
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  const normalized = normalizeDB(db);
+  atomicWriteJson(DB_FILE, normalized);
+  atomicWriteJson(DB_BACKUP_FILE, normalized);
 }
 
 function initUser(db, p, id) {
@@ -312,7 +336,7 @@ telegramBot.on('callback_query', async q => {
     if (result.ok) {
       await telegramBot.sendMessage(id, result.message);
     }
-  } catch (e) {
+  } catch (_) {
     try {
       await telegramBot.answerCallbackQuery(q.id, {
         text: "❌ خطا در ثبت ماموریت",
@@ -357,7 +381,7 @@ async function listenBale() {
         }
       }
     }
-  } catch (e) {}
+  } catch (_) {}
 
   setTimeout(listenBale, 1000);
 }
@@ -381,7 +405,7 @@ app.get('/admin/missions', (req, res) => {
   try {
     const db = loadDB();
     return res.json(db.missionsList || []);
-  } catch (e) {
+  } catch (_) {
     return res.json([]);
   }
 });
@@ -412,7 +436,7 @@ app.post('/admin/add-mission', (req, res) => {
 
     saveDB(db);
     return res.json({ ok: true });
-  } catch (e) {
+  } catch (_) {
     return res.json({ ok: false });
   }
 });
@@ -427,7 +451,7 @@ app.post('/admin/delete-mission', (req, res) => {
 
     saveDB(db);
     return res.json({ ok: true });
-  } catch (e) {
+  } catch (_) {
     return res.json({ ok: false });
   }
 });
@@ -443,7 +467,7 @@ app.post('/admin/mission/toggle', (req, res) => {
     saveDB(db);
 
     return res.json({ ok: true });
-  } catch (e) {
+  } catch (_) {
     return res.json({ ok: false });
   }
 });
@@ -458,7 +482,7 @@ app.get('/admin/users', (req, res) => {
     }
 
     return res.json(flat);
-  } catch (e) {
+  } catch (_) {
     return res.json({});
   }
 });
@@ -467,7 +491,7 @@ app.get('/admin/messages', (req, res) => {
   try {
     const db = loadDB();
     return res.json(db.messages || []);
-  } catch (e) {
+  } catch (_) {
     return res.json([]);
   }
 });
@@ -496,7 +520,7 @@ app.post('/admin/broadcast', async (req, res) => {
     }
 
     return res.json({ ok: true });
-  } catch (e) {
+  } catch (_) {
     return res.json({ ok: false });
   }
 });
