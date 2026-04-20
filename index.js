@@ -161,9 +161,10 @@ async function handle(p,id,text){
   if(text==="🎯 ماموریت روزانه"){
 
     let active = db.missionsList.filter(m =>
-      m.status==="active" &&
-      !user.completed.includes(m.id)
-    );
+  m.status === "active" &&
+  Array.isArray(user.completed) &&
+  !user.completed.includes(m.id)
+);
 
     if(active.length===0){
       return send(p,id,"⏳ ماموریتی نداری");
