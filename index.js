@@ -19,8 +19,8 @@ const DB_BACKUP_FILE = process.env.DB_BACKUP_FILE || path.join(__dirname, 'db.ba
 /* =========================================================
    2) TOKENS / CLIENTS
 ========================================================= */
-const TELEGRAM_TOKEN = '8685728009:AAED7KxyD0bvKgZr6XxTXJOycBFsHtdY0Ic';
-const BALE_TOKEN = '1579243381:t714UwiXVQCQDE8z2MKNuMq7Ya6K31wPggk';
+const TELEGRAM_TOKEN = "8685728009:AAED7KxyD0bvKgZr6XxTXJOycBFsHtdY0Ic";
+const BALE_TOKEN = "1579243381:t714UwiXVQCQDE8z2MKNuMq7Ya6K31wPggk";
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
@@ -199,14 +199,14 @@ function getAllUsers(db) {
 
 function getFeatureButtons() {
   return {
-    '🚀 بازکردن برنامه': 'https://click.adtrace.io/u2p3usf',
-    '🔄 بروزرسانی': 'https://click.adtrace.io/zc7cgls',
-    '💡 قبض': 'https://click.adtrace.io/uzwe0u4',
-    '💳 کارت به کارت': 'https://click.adtrace.io/lhntx66',
-    '❤️ نیکوکاری': 'https://click.adtrace.io/5yb7mok',
-    '📶 بسته اینترنتی': 'https://click.adtrace.io/4pepzq6',
-    '📱 شارژ': 'https://click.adtrace.io/51ee6bd',
-    '👥 دعوت': 'https://click.adtrace.io/px12hz6'
+    "🚀 بازکردن برنامه": "https://click.adtrace.io/u2p3usf",
+    "🔄 بروزرسانی": "https://click.adtrace.io/zc7cgls",
+    "💡 قبض": "https://click.adtrace.io/uzwe0u4",
+    "💳 کارت به کارت": "https://click.adtrace.io/lhntx66",
+    "❤️ نیکوکاری": "https://click.adtrace.io/5yb7mok",
+    "📶 بسته اینترنتی": "https://click.adtrace.io/4pepzq6",
+    "📱 شارژ": "https://click.adtrace.io/51ee6bd",
+    "👥 دعوت": "https://click.adtrace.io/px12hz6"
   };
 }
 
@@ -215,8 +215,8 @@ function buildMenu() {
   const keys = Object.keys(BUTTONS);
 
   const keyboard = [
-    ['🎯 ماموریت روزانه'],
-    ['👤 پروفایل شما']
+    ["🎯 ماموریت روزانه"],
+    ["👤 پروفایل شما"]
   ];
 
   for (let i = 0; i < keys.length; i += 2) {
