@@ -18,7 +18,7 @@ const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
-   DB SAFE
+   DB SAFE CORE
 ========================= */
 const DB_FILE = './db.json';
 
@@ -51,6 +51,9 @@ function initUser(db,p,id){
       completed:[]
     };
   }
+
+  db.users[p][id].started ||= [];
+  db.users[p][id].completed ||= [];
 }
 
 /* =========================
@@ -163,7 +166,7 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   CALLBACK FIX (ROBUST START CHECK)
+   CALLBACK (STRICT ANTI-CHEAT FIX)
 ========================= */
 telegramBot.on('callback_query', async q => {
 
@@ -179,7 +182,7 @@ telegramBot.on('callback_query', async q => {
 
   if(!mission){
     return telegramBot.answerCallbackQuery(q.id,{
-      text:"❌ ماموریت نیست",
+      text:"❌ ماموریت وجود ندارد",
       show_alert:true
     });
   }
@@ -191,10 +194,12 @@ telegramBot.on('callback_query', async q => {
     });
   }
 
-  // 🔥 FIX اصلی اینجاست:
-  // اگر start ثبت نشده بود، اما کاربر مستقیم claim زد → دوباره تلاش کن ثبت کنیم
+  // 🔥 STRICT CHECK (NO FAKE)
   if(!user.started.includes(String(mid))){
-    user.started.push(String(mid)); // fallback auto-track
+    return telegramBot.answerCallbackQuery(q.id,{
+      text:"⛔ اول روی شروع کلیک کن",
+      show_alert:true
+    });
   }
 
   user.points += Number(mission.points || 0);
@@ -215,7 +220,7 @@ telegramBot.on('callback_query', async q => {
 });
 
 /* =========================
-   START TRACK (FIXED RELIABILITY)
+   START TRACK (ONLY VALID ENTRY)
 ========================= */
 app.get('/start/:p/:id/:mid',(req,res)=>{
   const db = loadDB();
@@ -235,7 +240,7 @@ app.get('/start/:p/:id/:mid',(req,res)=>{
 });
 
 /* =========================
-   ADMIN
+   ADMIN (UNCHANGED)
 ========================= */
 app.get('/admin/missions',(req,res)=>{
   const db = loadDB();
