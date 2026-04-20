@@ -361,6 +361,7 @@ app.get('/start/:p/:id/:mid', (req, res) => {
       saveDB(db);
     }
 
+    // دقیقا همان لینک ذخیره‌شده در پنل
     const realMissionLink = String(mission.link || "").trim();
 
     if (!realMissionLink) {
