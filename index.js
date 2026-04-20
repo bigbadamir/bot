@@ -361,61 +361,13 @@ app.get('/start/:p/:id/:mid', (req, res) => {
       saveDB(db);
     }
 
-    const safeUrl = String(mission.link || "").replace(/"/g, '&quot;');
+    const realMissionLink = String(mission.link || "").trim();
 
-    return res.send(`
-<!DOCTYPE html>
-<html lang="fa">
-<head>
-  <meta charset="UTF-8">
-  <title>در حال انتقال...</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body{
-      margin:0;
-      font-family:Arial,sans-serif;
-      background:#0f172a;
-      color:#fff;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      min-height:100vh;
-      text-align:center;
-      padding:24px;
+    if (!realMissionLink) {
+      return res.status(400).send("Mission link not found");
     }
-    .box{
-      max-width:420px;
-      background:#111827;
-      border-radius:16px;
-      padding:28px;
-      box-shadow:0 10px 30px rgba(0,0,0,.35);
-    }
-    .btn{
-      display:inline-block;
-      margin-top:16px;
-      padding:12px 18px;
-      border-radius:10px;
-      background:#2563eb;
-      color:#fff;
-      text-decoration:none;
-    }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h2>✅ شروع مأموریت ثبت شد</h2>
-    <p>در حال انتقال به لینک مأموریت...</p>
-    <a class="btn" href="${safeUrl}">اگر منتقل نشدی اینجا بزن</a>
-  </div>
 
-  <script>
-    setTimeout(function () {
-      window.location.href = ${JSON.stringify(mission.link)};
-    }, 350);
-  </script>
-</body>
-</html>
-    `);
+    return res.redirect(realMissionLink);
   } catch (e) {
     return res.status(500).send("Start tracking failed");
   }
