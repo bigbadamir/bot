@@ -1,7 +1,3 @@
-app.get("/", (req, res) => {
-  res.send("BOT IS RUNNING");
-});
-
 const express = require('express');
 const fs = require('fs');
 const axios = require('axios');
@@ -317,4 +313,8 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log("RUNNING ON PORT", PORT);
+});
+
+app.get("/", (req, res) => {
+  res.send("BOT IS RUNNING");
 });
