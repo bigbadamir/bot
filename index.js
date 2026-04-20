@@ -15,16 +15,7 @@ app.use(express.static('public'));
 const BASE_URL = process.env.BASE_URL || "https://bot-0o2j.onrender.com";
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'db.json');
 const DB_BACKUP_FILE = process.env.DB_BACKUP_FILE || path.join(__dirname, 'db.backup.json');
-
-/*
-  ضدتقلب:
-  کاربر بعد از start باید حداقل این مقدار صبر کند تا claim معتبر باشد
-*/
 const MIN_SECONDS_BEFORE_CLAIM = Number(process.env.MIN_SECONDS_BEFORE_CLAIM || 8);
-
-/*
-  اگر از start خیلی بیشتر از این گذشته باشد، باید دوباره start بزند
-*/
 const START_EXPIRE_HOURS = Number(process.env.START_EXPIRE_HOURS || 24);
 
 /* =========================
@@ -33,12 +24,12 @@ const START_EXPIRE_HOURS = Number(process.env.START_EXPIRE_HOURS || 24);
 const TELEGRAM_TOKEN = "8685728009:AAED7KxyD0bvKgZr6XxTXJOycBFsHtdY0Ic";
 const BALE_TOKEN = "1579243381:t714UwiXVQCQDE8z2MKNuMq7Ya6K31wPggk";
 
+/* =========================
+   TELEGRAM / BALE
+========================= */
 const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
-/* =========================
-   BALE API
-========================= */
 const baleBot = {
   async sendMessage(chat_id, text, options = {}) {
     return axios.post(`${BALE_API}/sendMessage`, {
@@ -107,7 +98,6 @@ function normalizeUser(raw) {
 
   let startedMap = {};
   if (Array.isArray(user.started)) {
-    // مهاجرت از نسخه‌های قدیمی
     for (const mid of user.started) {
       startedMap[String(mid)] = { at: Date.now() };
     }
@@ -124,10 +114,9 @@ function normalizeUser(raw) {
     }
   }
 
-  let completed = [];
-  if (Array.isArray(user.completed)) {
-    completed = user.completed.map(v => String(v));
-  }
+  const completed = Array.isArray(user.completed)
+    ? user.completed.map(v => String(v))
+    : [];
 
   return {
     points: Number.isFinite(points) ? points : 0,
@@ -222,7 +211,6 @@ function getAllUsers(db) {
 
 function cleanupUserMissionState(user, db) {
   const validMissionIds = new Set(db.missionsList.map(m => String(m.id)));
-
   user.completed = user.completed.filter(mid => validMissionIds.has(String(mid)));
 
   const nextStarted = {};
@@ -534,7 +522,8 @@ app.get('/claim/:p/:id/:mid', (req, res) => {
 app.get('/admin/missions', (req, res) => {
   try {
     const db = loadDB();
-    return res.json(db.missionsList || []);
+    const missions = [...(db.missionsList || [])].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    return res.json(missions);
   } catch (_) {
     return res.json([]);
   }
@@ -567,8 +556,8 @@ app.post('/admin/add-mission', (req, res) => {
     });
 
     db.missionsList.push(mission);
-
     saveDB(db);
+
     return res.json({ ok: true, mission });
   } catch (_) {
     return res.json({ ok: false });
