@@ -18,7 +18,7 @@ const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
-   BALE SAFE
+   BALE
 ========================= */
 const baleBot = {
   async sendMessage(chat_id, text, options = {}) {
@@ -37,41 +37,31 @@ const baleBot = {
 };
 
 /* =========================
-   DB ULTRA SAFE (NO CRASH EVER)
+   DB SAFE CORE
 ========================= */
 const DB_FILE = './db.json';
 
 function loadDB(){
   try{
-    if(!fs.existsSync(DB_FILE)){
-      const fresh = { users:{telegram:{},bale:{}}, missionsList:[] };
-      fs.writeFileSync(DB_FILE, JSON.stringify(fresh,null,2));
-      return fresh;
-    }
-
     const raw = fs.readFileSync(DB_FILE,'utf8');
-
-    let db;
-    try{
-      db = JSON.parse(raw);
-    }catch(e){
-      db = { users:{telegram:{},bale:{}}, missionsList:[] };
-    }
+    const db = JSON.parse(raw);
 
     db.users = db.users || {telegram:{},bale:{}};
     db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
 
     return db;
-
   }catch(e){
-    return { users:{telegram:{},bale:{}}, missionsList:[] };
+    const fresh = {
+      users:{telegram:{},bale:{}},
+      missionsList:[]
+    };
+    fs.writeFileSync(DB_FILE, JSON.stringify(fresh,null,2));
+    return fresh;
   }
 }
 
 function saveDB(db){
-  try{
-    fs.writeFileSync(DB_FILE, JSON.stringify(db,null,2));
-  }catch(e){}
+  fs.writeFileSync(DB_FILE, JSON.stringify(db,null,2));
 }
 
 function initUser(db,p,id){
@@ -191,7 +181,7 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   CALLBACK SAFE
+   CALLBACK (FIXED CORE LOGIC)
 ========================= */
 telegramBot.on('callback_query', async q => {
 
@@ -208,36 +198,39 @@ telegramBot.on('callback_query', async q => {
 
   if(!mission){
     return telegramBot.answerCallbackQuery(q.id,{
-      text:"❌ ماموریت پیدا نشد",
+      text:"❌ ماموریت وجود ندارد",
       show_alert:true
     });
   }
 
+  // ❌ مهم: فقط برای همین کاربر چک می‌شود
   if(user.completed.includes(String(mid))){
     return telegramBot.answerCallbackQuery(q.id,{
-      text:"⚠️ قبلاً انجام شده",
+      text:"⚠️ قبلاً این ماموریت را انجام دادی",
       show_alert:true
     });
   }
 
-  user.points += Number(mission.points||0);
+  // ✅ ثبت فقط برای کاربر (NOT GLOBAL DELETE)
+  user.points += Number(mission.points || 0);
   user.completed.push(String(mid));
 
   saveDB(db);
 
   telegramBot.answerCallbackQuery(q.id,{
-    text:"🎉 انجام شد!",
+    text:"🎉 دریافت شد!",
     show_alert:true
   });
 
   telegramBot.sendMessage(id,
-`🎉 ماموریت تایید شد
+`🎉 ماموریت با موفقیت انجام شد
+
 ➕ +${mission.points}
-💰 مجموع: ${user.points}`);
+💰 مجموع امتیاز: ${user.points}`);
 });
 
 /* =========================
-   BALE LOOP (SAFE)
+   BALE LOOP
 ========================= */
 let offset = 0;
 
@@ -253,30 +246,23 @@ async function listenBale(){
     }
   }catch(e){}
 
-  setTimeout(listenBale,1200);
+  setTimeout(listenBale,1000);
 }
 listenBale();
 
 /* =========================
-   ADMIN SAFE ENDPOINT (FIX FOR YOUR ERROR)
+   ADMIN (NO DELETE ON CLAIM EVER)
 ========================= */
 app.get('/admin/missions',(req,res)=>{
-  try{
-    const db = loadDB();
-    return res.status(200).json(db.missionsList || []);
-  }catch(e){
-    return res.status(200).json([]);
-  }
+  const db = loadDB();
+  res.json(db.missionsList || []);
 });
 
-/* =========================
-   ADMIN ADD
-========================= */
 app.post('/admin/add-mission',(req,res)=>{
   const db = loadDB();
 
   db.missionsList.push({
-    id:Date.now(),
+    id: Date.now(),
     title:req.body.title,
     desc:req.body.desc,
     link:req.body.link,
@@ -288,30 +274,24 @@ app.post('/admin/add-mission',(req,res)=>{
   res.json({ok:true});
 });
 
-/* =========================
-   DELETE
-========================= */
 app.post('/admin/delete-mission',(req,res)=>{
   const db = loadDB();
 
   db.missionsList = db.missionsList.filter(
-    m=>String(m.id)!==String(req.body.id)
+    m => String(m.id) !== String(req.body.id)
   );
 
   saveDB(db);
   res.json({ok:true});
 });
 
-/* =========================
-   TOGGLE
-========================= */
 app.post('/admin/mission/toggle',(req,res)=>{
   const db = loadDB();
 
   const m = db.missionsList.find(x=>String(x.id)===String(req.body.id));
   if(!m) return res.json({ok:false});
 
-  m.status=req.body.status;
+  m.status = req.body.status;
 
   saveDB(db);
   res.json({ok:true});
