@@ -264,15 +264,16 @@ function loadMissions(){
         <p>${m.desc || "-"}</p>
         <p><small>امتیاز: ${m.points ?? 0}</small></p>
         <p><small>نوع: ${m.type || "-"}</small></p>
+        <p><small>وضعیت: ${m.status || "-"}</small></p>
         <p><small>لینک ذخیره‌شده:</small><br><a href="${m.link || '#'}" target="_blank">${m.link || "-"}</a></p>
 
         <label class="switch">
           <input type="checkbox" ${m.status==="active"?"checked":""}
-          onchange="toggleMission(${m.id},this.checked)">
+          onchange="toggleMission('${m.id}',this.checked)">
           <span></span>
         </label>
 
-        <button onclick="deleteMission(${m.id})">🗑 حذف</button>
+        <button onclick="deleteMission('${m.id}')">🗑 حذف</button>
       </div>`;
     });
 
@@ -331,7 +332,7 @@ function toggleMission(id,state){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({id,status:state?"active":"inactive"})
-  });
+  }).then(()=>loadMissions());
 }
 
 /* USERS */
