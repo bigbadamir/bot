@@ -37,7 +37,7 @@ const baleBot = {
 };
 
 /* =========================
-   DB
+   DB SAFE + NO LOSS FIX
 ========================= */
 const DB_FILE = './db.json';
 
@@ -46,10 +46,13 @@ function loadDB(){
     const raw = fs.readFileSync(DB_FILE,'utf8');
     const db = JSON.parse(raw);
 
+    if(!db || typeof db !== "object") throw "bad";
+
     db.users = db.users || {telegram:{},bale:{}};
     db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
 
     return db;
+
   }catch(e){
     const fresh = {
       users:{telegram:{},bale:{}},
@@ -66,9 +69,18 @@ function saveDB(db){
 
 function initUser(db,p,id){
   if(!db.users[p]) db.users[p]={};
+
   if(!db.users[p][id]){
-    db.users[p][id]={points:0,started:[],completed:[]};
+    db.users[p][id]={
+      points:0,
+      started:[],
+      completed:[]
+    };
   }
+
+  // safety fix
+  db.users[p][id].started ||= [];
+  db.users[p][id].completed ||= [];
 }
 
 /* =========================
@@ -146,8 +158,9 @@ ${m.desc}
 🪙 ${m.points}`,{
         reply_markup:{
           inline_keyboard:[[
-            // 🔥 SWAPPED BACK (as requested)
             {text:"▶️ شروع", url:m.link},
+
+            // keep claim but NO fake without start
             {text:"🚀 انجام دادم", callback_data:`claim_${p}_${id}_${m.id}`}
           ]]
         }
@@ -182,7 +195,7 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   CALLBACK (UNCHANGED LOGIC)
+   CALLBACK (ANTI FAKE START CHECK)
 ========================= */
 telegramBot.on('callback_query', async q => {
 
@@ -194,7 +207,6 @@ telegramBot.on('callback_query', async q => {
   initUser(db,p,id);
 
   const user = db.users[p][id];
-
   const mission = db.missionsList.find(m=>String(m.id)===String(mid));
 
   if(!mission){
@@ -204,9 +216,18 @@ telegramBot.on('callback_query', async q => {
     });
   }
 
+  // ❌ already done
   if(user.completed.includes(String(mid))){
     return telegramBot.answerCallbackQuery(q.id,{
       text:"⚠️ قبلاً انجام شده",
+      show_alert:true
+    });
+  }
+
+  // 🔥 ANTI FAKE: must click START first
+  if(!user.started.includes(String(mid))){
+    return telegramBot.answerCallbackQuery(q.id,{
+      text:"⛔ اول روی شروع کلیک کن",
       show_alert:true
     });
   }
@@ -222,35 +243,41 @@ telegramBot.on('callback_query', async q => {
   });
 
   telegramBot.sendMessage(id,
-`🎉 ماموریت انجام شد
+`🎉 ماموریت تایید شد
 
 ➕ +${mission.points}
 💰 مجموع: ${user.points}`);
 });
 
 /* =========================
-   BALE
+   TRACK START CLICK (NEW FIX)
 ========================= */
-let offset = 0;
+app.get('/start/:p/:id/:mid',(req,res)=>{
+  const db = loadDB();
+  const {p,id,mid} = req.params;
 
-async function listenBale(){
-  try{
-    const updates = await baleBot.getUpdates(offset);
+  initUser(db,p,id);
 
-    for(const u of updates){
-      offset = u.update_id + 1;
-      if(!u.message) continue;
+  const user = db.users[p][id];
 
-      handle("bale",u.message.chat.id,u.message.text);
-    }
-  }catch(e){}
+  if(!user.started.includes(String(mid))){
+    user.started.push(String(mid));
+  }
 
-  setTimeout(listenBale,1000);
-}
-listenBale();
+  saveDB(db);
+
+  res.send("OK");
+});
 
 /* =========================
-   ADMIN (UNCHANGED)
+   CLAIM ROUTE (NOT USED BUT SAFE)
+========================= */
+app.get('/claim/:p/:id/:mid',(req,res)=>{
+  res.send("disabled");
+});
+
+/* =========================
+   ADMIN (SAFE, NO DELETE ON USERS)
 ========================= */
 app.get('/admin/missions',(req,res)=>{
   const db = loadDB();
