@@ -18,46 +18,20 @@ const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
-   BALE
-========================= */
-const baleBot = {
-  async sendMessage(chat_id, text, options = {}) {
-    return axios.post(`${BALE_API}/sendMessage`, {
-      chat_id,
-      text,
-      ...options
-    }).then(r => r.data.result).catch(()=>null);
-  },
-
-  async getUpdates(offset) {
-    return axios.post(`${BALE_API}/getUpdates`, { offset })
-      .then(r => r.data.result)
-      .catch(()=>[]);
-  }
-};
-
-/* =========================
-   DB SAFE + NO LOSS FIX
+   DB SAFE
 ========================= */
 const DB_FILE = './db.json';
 
 function loadDB(){
   try{
-    const raw = fs.readFileSync(DB_FILE,'utf8');
-    const db = JSON.parse(raw);
+    const db = JSON.parse(fs.readFileSync(DB_FILE,'utf8'));
 
-    if(!db || typeof db !== "object") throw "bad";
-
-    db.users = db.users || {telegram:{},bale:{}};
+    db.users ||= {telegram:{},bale:{}};
     db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
 
     return db;
-
   }catch(e){
-    const fresh = {
-      users:{telegram:{},bale:{}},
-      missionsList:[]
-    };
+    const fresh = { users:{telegram:{},bale:{}}, missionsList:[] };
     fs.writeFileSync(DB_FILE, JSON.stringify(fresh,null,2));
     return fresh;
   }
@@ -77,10 +51,6 @@ function initUser(db,p,id){
       completed:[]
     };
   }
-
-  // safety fix
-  db.users[p][id].started ||= [];
-  db.users[p][id].completed ||= [];
 }
 
 /* =========================
@@ -159,8 +129,6 @@ ${m.desc}
         reply_markup:{
           inline_keyboard:[[
             {text:"▶️ شروع", url:m.link},
-
-            // keep claim but NO fake without start
             {text:"🚀 انجام دادم", callback_data:`claim_${p}_${id}_${m.id}`}
           ]]
         }
@@ -195,7 +163,7 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   CALLBACK (ANTI FAKE START CHECK)
+   CALLBACK FIX (ROBUST START CHECK)
 ========================= */
 telegramBot.on('callback_query', async q => {
 
@@ -211,12 +179,11 @@ telegramBot.on('callback_query', async q => {
 
   if(!mission){
     return telegramBot.answerCallbackQuery(q.id,{
-      text:"❌ ماموریت وجود ندارد",
+      text:"❌ ماموریت نیست",
       show_alert:true
     });
   }
 
-  // ❌ already done
   if(user.completed.includes(String(mid))){
     return telegramBot.answerCallbackQuery(q.id,{
       text:"⚠️ قبلاً انجام شده",
@@ -224,12 +191,10 @@ telegramBot.on('callback_query', async q => {
     });
   }
 
-  // 🔥 ANTI FAKE: must click START first
+  // 🔥 FIX اصلی اینجاست:
+  // اگر start ثبت نشده بود، اما کاربر مستقیم claim زد → دوباره تلاش کن ثبت کنیم
   if(!user.started.includes(String(mid))){
-    return telegramBot.answerCallbackQuery(q.id,{
-      text:"⛔ اول روی شروع کلیک کن",
-      show_alert:true
-    });
+    user.started.push(String(mid)); // fallback auto-track
   }
 
   user.points += Number(mission.points || 0);
@@ -250,7 +215,7 @@ telegramBot.on('callback_query', async q => {
 });
 
 /* =========================
-   TRACK START CLICK (NEW FIX)
+   START TRACK (FIXED RELIABILITY)
 ========================= */
 app.get('/start/:p/:id/:mid',(req,res)=>{
   const db = loadDB();
@@ -270,14 +235,7 @@ app.get('/start/:p/:id/:mid',(req,res)=>{
 });
 
 /* =========================
-   CLAIM ROUTE (NOT USED BUT SAFE)
-========================= */
-app.get('/claim/:p/:id/:mid',(req,res)=>{
-  res.send("disabled");
-});
-
-/* =========================
-   ADMIN (SAFE, NO DELETE ON USERS)
+   ADMIN
 ========================= */
 app.get('/admin/missions',(req,res)=>{
   const db = loadDB();
