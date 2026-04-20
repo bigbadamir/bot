@@ -234,7 +234,6 @@ function closePopup(){
 /* =========================
    MISSIONS
 ========================= */
-
 async function loadMissions(){
   const box=document.getElementById("missionList");
   box.innerHTML="⏳ در حال دریافت...";
@@ -258,7 +257,7 @@ async function loadMissions(){
     let html="";
 
     data.forEach(m=>{
-      html+=`
+      html += `
       <div class="mission">
         <h3>${m.title || "-"}</h3>
         <p>${m.desc || "-"}</p>
@@ -277,7 +276,7 @@ async function loadMissions(){
       </div>`;
     });
 
-    box.innerHTML=html;
+    box.innerHTML = html;
   }catch(err){
     console.error(err);
     box.innerHTML="❌ خطا در دریافت ماموریت‌ها";
@@ -286,11 +285,11 @@ async function loadMissions(){
 
 async function addMission(){
   const payload = {
-    title:document.getElementById("title").value.trim(),
-    desc:document.getElementById("desc").value.trim(),
-    link:document.getElementById("link").value.trim(),
-    points:document.getElementById("points").value.trim(),
-    type:document.getElementById("type").value
+    title: document.getElementById("title").value.trim(),
+    desc: document.getElementById("desc").value.trim(),
+    link: document.getElementById("link").value.trim(),
+    points: document.getElementById("points").value.trim(),
+    type: document.getElementById("type").value
   };
 
   if(!payload.title || !payload.link){
@@ -299,10 +298,10 @@ async function addMission(){
   }
 
   try{
-    const r = await fetch('/admin/add-mission',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload)
+    const r = await fetch('/admin/add-mission', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
     });
 
     const res = await r.json();
@@ -312,36 +311,46 @@ async function addMission(){
       return;
     }
 
-    document.getElementById("title").value="";
-    document.getElementById("desc").value="";
-    document.getElementById("link").value="";
-    document.getElementById("points").value="";
+    document.getElementById("title").value = "";
+    document.getElementById("desc").value = "";
+    document.getElementById("link").value = "";
+    document.getElementById("points").value = "";
 
     show('missionList');
     await loadMissions();
     showPopup("✅ ماموریت ساخته شد");
   }catch(err){
     console.error(err);
-    showPopup("❌ خطا");
+    showPopup("❌ خطا در ساخت ماموریت");
   }
 }
 
 async function deleteMission(id){
-  await fetch('/admin/delete-mission',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({id})
-  });
-  loadMissions();
+  try{
+    await fetch('/admin/delete-mission',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id})
+    });
+    loadMissions();
+  }catch(err){
+    console.error(err);
+    showPopup("❌ خطا در حذف");
+  }
 }
 
 async function toggleMission(id,state){
-  await fetch('/admin/mission/toggle',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({id,status:state?"active":"inactive"})
-  });
-  loadMissions();
+  try{
+    await fetch('/admin/mission/toggle',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,status:state?"active":"inactive"})
+    });
+    loadMissions();
+  }catch(err){
+    console.error(err);
+    showPopup("❌ خطا در تغییر وضعیت");
+  }
 }
 
 /* USERS */
@@ -350,14 +359,15 @@ async function loadUsers(){
     const r = await fetch('/admin/users', { cache: 'no-store' });
     const data = await r.json();
 
-    let html="";
+    let html = "";
     Object.keys(data).forEach(id=>{
-      html+=`<div class="mission">${id}</div>`;
+      html += `<div class="mission">${id}</div>`;
     });
-    document.getElementById("userList").innerHTML=html || "کاربری وجود ندارد";
+
+    document.getElementById("userList").innerHTML = html || "کاربری وجود ندارد";
   }catch(err){
     console.error(err);
-    document.getElementById("userList").innerHTML="❌ خطا در دریافت کاربران";
+    document.getElementById("userList").innerHTML = "❌ خطا در دریافت کاربران";
   }
 }
 
@@ -367,27 +377,33 @@ async function loadMessages(){
     const r = await fetch('/admin/messages', { cache: 'no-store' });
     const data = await r.json();
 
-    let html="";
+    let html = "";
     data.forEach(m=>{
-      html+=`<div class="msg">${m.text}</div>`;
+      html += `<div class="msg">${m.text}</div>`;
     });
-    document.getElementById("msgList").innerHTML=html || "پیامی وجود ندارد";
+
+    document.getElementById("msgList").innerHTML = html || "پیامی وجود ندارد";
   }catch(err){
     console.error(err);
-    document.getElementById("msgList").innerHTML="❌ خطا در دریافت پیام‌ها";
+    document.getElementById("msgList").innerHTML = "❌ خطا در دریافت پیام‌ها";
   }
 }
 
 async function sendMsg(){
-  const text=document.getElementById("editor").innerHTML.trim();
+  const text = document.getElementById("editor").innerHTML.trim();
 
-  await fetch('/admin/broadcast',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({text})
-  });
+  try{
+    await fetch('/admin/broadcast',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text})
+    });
 
-  showPopup("📩 ارسال شد");
+    showPopup("📩 ارسال شد");
+  }catch(err){
+    console.error(err);
+    showPopup("❌ خطا در ارسال");
+  }
 }
 
 /* INIT */
