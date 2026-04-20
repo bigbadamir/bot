@@ -18,7 +18,7 @@ const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
 
 /* =========================
-   BALE (FIXED + ENABLED)
+   BALE
 ========================= */
 const baleBot = {
   async sendMessage(chat_id, text, options = {}) {
@@ -30,14 +30,13 @@ const baleBot = {
   },
 
   async getUpdates(offset) {
-    return axios.post(`${BALE_API}/getUpdates`, {
-      offset
-    }).then(r => r.data.result);
+    return axios.post(`${BALE_API}/getUpdates`, { offset })
+      .then(r => r.data.result);
   }
 };
 
 /* =========================
-   DB SAFE
+   DB SAFE (NO MUTATION BUGS)
 ========================= */
 const DB_FILE = './db.json';
 
@@ -50,7 +49,10 @@ function loadDB(){
 
     return db;
   }catch(e){
-    const fresh = { users:{telegram:{},bale:{}}, missionsList:[] };
+    const fresh = {
+      users:{telegram:{},bale:{}},
+      missionsList:[]
+    };
     fs.writeFileSync(DB_FILE, JSON.stringify(fresh,null,2));
     return fresh;
   }
@@ -97,7 +99,7 @@ function buildMenu(){
 }
 
 /* =========================
-   SEND UNIFIED
+   SEND
 ========================= */
 async function send(p,id,text,options={}){
   return p==="telegram"
@@ -137,7 +139,7 @@ async function handle(p,id,text){
       return send(p,id,"⏳ ماموریتی نداری");
     }
 
-    for(let m of active){
+    for(const m of active){
       await send(p,id,
 `${m.title}
 ${m.desc}
@@ -179,7 +181,7 @@ telegramBot.on('message',msg=>{
 });
 
 /* =========================
-   CALLBACK FIX (IMPORTANT PART)
+   CALLBACK (FIXED — NO GLOBAL DELETE BUG)
 ========================= */
 telegramBot.on('callback_query', async q => {
 
@@ -191,41 +193,44 @@ telegramBot.on('callback_query', async q => {
   initUser(db,p,id);
 
   const user = db.users[p][id];
+
   const mission = db.missionsList.find(m=>String(m.id)===String(mid));
 
   if(!mission){
     return telegramBot.answerCallbackQuery(q.id,{
-      text:"❌ ماموریت پیدا نشد",
+      text:"❌ ماموریت وجود ندارد",
       show_alert:true
     });
   }
 
+  // جلوگیری از دوبار گرفتن
   if(user.completed.includes(String(mid))){
     return telegramBot.answerCallbackQuery(q.id,{
-      text:"⚠️ این ماموریت قبلاً انجام شده",
+      text:"⚠️ قبلاً انجام شده",
       show_alert:true
     });
   }
 
+  // فقط برای همین کاربر ثبت می‌شود (NOT GLOBAL)
   user.points += Number(mission.points);
   user.completed.push(String(mid));
 
   saveDB(db);
 
   telegramBot.answerCallbackQuery(q.id,{
-    text:"🎉 ماموریت تایید شد",
+    text:"🎉 انجام شد!",
     show_alert:true
   });
 
   telegramBot.sendMessage(id,
-`🎉 ماموریت انجام شد
+`🎉 ماموریت تایید شد
 
 ➕ +${mission.points}
-💰 مجموع: ${user.points}`);
+💰 مجموع امتیاز: ${user.points}`);
 });
 
 /* =========================
-   BALE LOOP (FIXED)
+   BALE LOOP
 ========================= */
 let offset = 0;
 
@@ -246,10 +251,57 @@ async function listenBale(){
 listenBale();
 
 /* =========================
-   CLAIM HTTP (optional fallback)
+   CLAIM HTTP SAFE (NO SIDE EFFECT)
 ========================= */
 app.get('/claim/:p/:id/:mid',(req,res)=>{
-  res.send("OK (use button inside bot)");
+  res.send("OK - use bot button");
+});
+
+/* =========================
+   ADMIN SAFE (NO TOUCH MISSION LIST ON CLAIM)
+========================= */
+app.get('/admin/missions',(req,res)=>{
+  const db = loadDB();
+  res.json(db.missionsList || []);
+});
+
+app.post('/admin/add-mission',(req,res)=>{
+  const db = loadDB();
+
+  db.missionsList.push({
+    id: Date.now(),
+    title:req.body.title,
+    desc:req.body.desc,
+    link:req.body.link,
+    points:Number(req.body.points||0),
+    status:"inactive"
+  });
+
+  saveDB(db);
+  res.json({ok:true});
+});
+
+app.post('/admin/delete-mission',(req,res)=>{
+  const db = loadDB();
+
+  db.missionsList = db.missionsList.filter(
+    m => String(m.id) !== String(req.body.id)
+  );
+
+  saveDB(db);
+  res.json({ok:true});
+});
+
+app.post('/admin/mission/toggle',(req,res)=>{
+  const db = loadDB();
+
+  const m = db.missionsList.find(x=>String(x.id)===String(req.body.id));
+  if(!m) return res.json({ok:false});
+
+  m.status = req.body.status;
+
+  saveDB(db);
+  res.json({ok:true});
 });
 
 /* =========================
