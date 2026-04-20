@@ -142,6 +142,9 @@ async function handle(p,id,text){
   initUser(db,p,id);
 
   let user = db.users[p][id];
+user.started = Array.isArray(user.started) ? user.started : [];
+user.completed = Array.isArray(user.completed) ? user.completed : [];
+user.points = Number(user.points || 0);
 
   if(text==="/start"){
     saveDB(db);
