@@ -112,14 +112,17 @@ function buildMenu() {
    HELPERS
 ========================= */
 function appendTrackingParams(link, userId, missionId) {
-  const separator = link.includes('?') ? '&' : '?';
-  return `${link}${separator}sub_id=${encodeURIComponent(userId)}&sub_id2=${encodeURIComponent(missionId)}`;
+  const cleanLink = String(link || "").trim();
+  if (!cleanLink) return "";
+
+  const separator = cleanLink.includes('?') ? '&' : '?';
+  return `${cleanLink}${separator}sub_id=${encodeURIComponent(userId)}&sub_id2=${encodeURIComponent(missionId)}`;
 }
 
 async function send(p, id, text, options = {}) {
   return p === "telegram"
     ? telegramBot.sendMessage(id, text, options)
-    : baleBot.sendMessage(id, text, options);
+    : baleBot.sendMessage(id, text, ...[options][0]);
 }
 
 async function answerPlatformCallback(platform, callbackId, text, showAlert = true) {
@@ -220,7 +223,7 @@ async function handle(p, id, text) {
     }
 
     for (let m of active) {
-      const finalLink = appendTrackingParams(String(m.link || ""), id, m.id);
+      const finalLink = appendTrackingParams(m.link, id, m.id);
 
       await send(p, id,
 `${m.title}
