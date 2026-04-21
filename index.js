@@ -9,7 +9,6 @@ app.use(express.static('public'));
 
 const TELEGRAM_TOKEN = "8685728009:AAED7KxyD0bvKgZr6XxTXJOycBFsHtdY0Ic";
 const BALE_TOKEN = "1579243381:t714UwiXVQCQDE8z2MKNuMq7Ya6K31wPggk";
-const BASE_URL = "https://bot-0o2j.onrender.com";
 
 const telegramBot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const BALE_API = `https://tapi.bale.ai/bot${BALE_TOKEN}`;
@@ -110,8 +109,13 @@ function buildMenu() {
 }
 
 /* =========================
-   SEND
+   HELPERS
 ========================= */
+function appendTrackingParams(link, userId, missionId) {
+  const separator = link.includes('?') ? '&' : '?';
+  return `${link}${separator}sub_id=${encodeURIComponent(userId)}&sub_id2=${encodeURIComponent(missionId)}`;
+}
+
 async function send(p, id, text, options = {}) {
   return p === "telegram"
     ? telegramBot.sendMessage(id, text, options)
@@ -163,8 +167,7 @@ async function processClaim(platform, userId, missionId, callbackId = null) {
 
   let clicked = db.clicks.find(c =>
     String(c.uid) === userId &&
-    String(c.mid) === missionId &&
-    String(c.platform) === String(platform)
+    String(c.mid) === missionId
   );
 
   if (!clicked) {
@@ -217,8 +220,7 @@ async function handle(p, id, text) {
     }
 
     for (let m of active) {
-      // دیتای لینک از خود پنل/DB می‌آید؛ فقط برای ثبت کلیک از /go عبور می‌کند
-      let finalLink = `${BASE_URL}/go?platform=${encodeURIComponent(p)}&uid=${encodeURIComponent(id)}&mid=${encodeURIComponent(m.id)}`;
+      const finalLink = appendTrackingParams(String(m.link || ""), id, m.id);
 
       await send(p, id,
 `${m.title}
@@ -335,68 +337,24 @@ async function startBalePolling() {
 }
 
 /* =========================
-   CLICK REDIRECT ENDPOINT
-========================= */
-app.get('/go', (req, res) => {
-  let db = loadDB();
-
-  const uid = String(req.query.uid || "");
-  const mid = String(req.query.mid || "");
-  const platform = String(req.query.platform || "telegram");
-
-  if (!uid || !mid) {
-    return res.status(400).send("Missing uid or mid");
-  }
-
-  // لینک از روی همان دیتایی خوانده می‌شود که پنل ذخیره کرده
-  let mission = db.missionsList.find(m => String(m.id) === mid);
-
-  if (!mission) {
-    return res.status(404).send("Mission not found");
-  }
-
-  let exists = db.clicks.find(c =>
-    String(c.uid) === uid &&
-    String(c.mid) === mid &&
-    String(c.platform) === platform
-  );
-
-  if (!exists) {
-    db.clicks.push({
-      uid,
-      mid,
-      platform,
-      time: Date.now()
-    });
-    saveDB(db);
-  }
-
-  // دقیقاً به همان لینک ذخیره‌شده در پنل ریدایرکت می‌کند
-  return res.redirect(mission.link);
-});
-
-/* =========================
-   🔥 ADTRACE CLICK ENDPOINT
+   ADTRACE CALLBACK ENDPOINT
 ========================= */
 app.get('/adtrace/click', (req, res) => {
   let db = loadDB();
 
-  let uid = req.query.uid;
-  let mid = req.query.mid;
-  let platform = req.query.platform || "telegram";
+  const uid = String(req.query.uid || "");
+  const mid = String(req.query.mid || "");
 
   if (uid && mid) {
     let exists = db.clicks.find(c =>
-      String(c.uid) === String(uid) &&
-      String(c.mid) === String(mid) &&
-      String(c.platform) === String(platform)
+      String(c.uid) === uid &&
+      String(c.mid) === mid
     );
 
     if (!exists) {
       db.clicks.push({
-        uid: String(uid),
-        mid: String(mid),
-        platform: String(platform),
+        uid,
+        mid,
         time: Date.now()
       });
       saveDB(db);
