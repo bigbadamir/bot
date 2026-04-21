@@ -23,13 +23,11 @@ const baleBot = {
       .then(r => r.data.result);
   },
   async getUpdates(offset) {
-    const body = {
+    return axios.post(`${BALE_API}/getUpdates`, {
       offset,
       limit: 100,
       timeout: 25
-    };
-
-    return axios.post(`${BALE_API}/getUpdates`, body, {
+    }, {
       timeout: 30000
     }).then(r => r.data.result);
   },
@@ -56,9 +54,15 @@ function loadDB() {
     db.users = db.users || { telegram: {}, bale: {} };
     db.missionsList = Array.isArray(db.missionsList) ? db.missionsList : [];
     db.clicks = Array.isArray(db.clicks) ? db.clicks : [];
+    db.messages = Array.isArray(db.messages) ? db.messages : [];
     return db;
   } catch (e) {
-    let fresh = { users: { telegram: {}, bale: {} }, missionsList: [], clicks: [] };
+    let fresh = {
+      users: { telegram: {}, bale: {} },
+      missionsList: [],
+      clicks: [],
+      messages: []
+    };
     fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
     return fresh;
   }
@@ -114,9 +118,6 @@ async function send(p, id, text, options = {}) {
     : baleBot.sendMessage(id, text, options);
 }
 
-/* =========================
-   CLAIM LOGIC
-========================= */
 async function answerPlatformCallback(platform, callbackId, text, showAlert = true) {
   try {
     if (!callbackId) return;
@@ -137,6 +138,9 @@ async function answerPlatformCallback(platform, callbackId, text, showAlert = tr
   }
 }
 
+/* =========================
+   CLAIM LOGIC
+========================= */
 async function processClaim(platform, userId, missionId, callbackId = null) {
   let db = loadDB();
   userId = String(userId);
@@ -159,7 +163,8 @@ async function processClaim(platform, userId, missionId, callbackId = null) {
 
   let clicked = db.clicks.find(c =>
     String(c.uid) === userId &&
-    String(c.mid) === missionId
+    String(c.mid) === missionId &&
+    String(c.platform) === String(platform)
   );
 
   if (!clicked) {
@@ -167,7 +172,7 @@ async function processClaim(platform, userId, missionId, callbackId = null) {
     return;
   }
 
-  user.points += Number(mission.points);
+  user.points += Number(mission.points || 0);
   user.completed.push(missionId);
   saveDB(db);
 
@@ -212,6 +217,7 @@ async function handle(p, id, text) {
     }
 
     for (let m of active) {
+      // دیتای لینک از خود پنل/DB می‌آید؛ فقط برای ثبت کلیک از /go عبور می‌کند
       let finalLink = `${BASE_URL}/go?platform=${encodeURIComponent(p)}&uid=${encodeURIComponent(id)}&mid=${encodeURIComponent(m.id)}`;
 
       await send(p, id,
@@ -334,35 +340,38 @@ async function startBalePolling() {
 app.get('/go', (req, res) => {
   let db = loadDB();
 
-  let uid = req.query.uid;
-  let mid = req.query.mid;
-  let platform = req.query.platform || "telegram";
+  const uid = String(req.query.uid || "");
+  const mid = String(req.query.mid || "");
+  const platform = String(req.query.platform || "telegram");
 
   if (!uid || !mid) {
     return res.status(400).send("Missing uid or mid");
   }
 
-  let mission = db.missionsList.find(m => String(m.id) === String(mid));
+  // لینک از روی همان دیتایی خوانده می‌شود که پنل ذخیره کرده
+  let mission = db.missionsList.find(m => String(m.id) === mid);
 
   if (!mission) {
     return res.status(404).send("Mission not found");
   }
 
   let exists = db.clicks.find(c =>
-    String(c.uid) === String(uid) &&
-    String(c.mid) === String(mid)
+    String(c.uid) === uid &&
+    String(c.mid) === mid &&
+    String(c.platform) === platform
   );
 
   if (!exists) {
     db.clicks.push({
-      uid: String(uid),
-      mid: String(mid),
-      platform: String(platform),
+      uid,
+      mid,
+      platform,
       time: Date.now()
     });
     saveDB(db);
   }
 
+  // دقیقاً به همان لینک ذخیره‌شده در پنل ریدایرکت می‌کند
   return res.redirect(mission.link);
 });
 
@@ -374,16 +383,20 @@ app.get('/adtrace/click', (req, res) => {
 
   let uid = req.query.uid;
   let mid = req.query.mid;
+  let platform = req.query.platform || "telegram";
 
   if (uid && mid) {
     let exists = db.clicks.find(c =>
-      String(c.uid) === String(uid) && String(c.mid) === String(mid)
+      String(c.uid) === String(uid) &&
+      String(c.mid) === String(mid) &&
+      String(c.platform) === String(platform)
     );
 
     if (!exists) {
       db.clicks.push({
         uid: String(uid),
         mid: String(mid),
+        platform: String(platform),
         time: Date.now()
       });
       saveDB(db);
@@ -394,7 +407,7 @@ app.get('/adtrace/click', (req, res) => {
 });
 
 /* =========================
-   ADMIN APIs (بدون تغییر)
+   ADMIN APIs
 ========================= */
 app.get('/admin/missions', (req, res) => {
   let db = loadDB();
@@ -410,6 +423,7 @@ app.post('/admin/add-mission', (req, res) => {
     desc: req.body.desc,
     link: req.body.link,
     points: req.body.points,
+    type: req.body.type || "main",
     status: "inactive"
   });
 
@@ -432,6 +446,53 @@ app.post('/admin/mission/toggle', (req, res) => {
   if (!m) return res.json({ ok: false });
   m.status = req.body.status;
   saveDB(db);
+  res.json({ ok: true });
+});
+
+app.get('/admin/users', (req, res) => {
+  let db = loadDB();
+  const merged = {
+    ...db.users.telegram,
+    ...db.users.bale
+  };
+  res.json(merged);
+});
+
+app.get('/admin/messages', (req, res) => {
+  let db = loadDB();
+  res.json(db.messages || []);
+});
+
+app.post('/admin/broadcast', async (req, res) => {
+  let db = loadDB();
+  const text = req.body.text || "";
+
+  db.messages = db.messages || [];
+  db.messages.push({
+    id: Date.now(),
+    text
+  });
+  saveDB(db);
+
+  const telegramUsers = Object.keys(db.users.telegram || {});
+  const baleUsers = Object.keys(db.users.bale || {});
+
+  for (const id of telegramUsers) {
+    try {
+      await send("telegram", id, text, { parse_mode: "HTML" });
+    } catch (e) {
+      console.log("telegram broadcast error", id, e.message);
+    }
+  }
+
+  for (const id of baleUsers) {
+    try {
+      await send("bale", id, text, { parse_mode: "HTML" });
+    } catch (e) {
+      console.log("bale broadcast error", id, e.message);
+    }
+  }
+
   res.json({ ok: true });
 });
 
